@@ -35,50 +35,50 @@ public class ReservationController {
     }
 
     /**
- * Traiter le formulaire d'ajout (Back-office)
- */
-@PostRouteMapping(value = "/reservations/add")
-public ModelView addReservation(
-        @RequestParam("hotelId") Long hotelId,
-        @RequestParam("customerId") String customerId,
-        @RequestParam("passengerNbr") Integer passengerNbr,
-        @RequestParam("arrivalDate") String arrivalDateStr) {
+     * Traiter le formulaire d'ajout (Back-office)
+     */
+    @PostRouteMapping(value = "/reservations/add")
+    public ModelView addReservation(
+            @RequestParam("hotelId") Long hotelId,
+            @RequestParam("customerId") String customerId,
+            @RequestParam("passengerNbr") Integer passengerNbr,
+            @RequestParam("arrivalDate") String arrivalDateStr) {
 
-    ModelView mv = new ModelView("/reservations/form.jsp");
+        ModelView mv = new ModelView("/reservations/form.jsp");
 
-    try {
-        // Parser la date
-        LocalDateTime arrivalDate = LocalDateTime.parse(arrivalDateStr, 
-            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"));
-
-        // Créer la réservation via le service
-        Reservation reservation = reservationService.createReservation(
-            hotelId, customerId, passengerNbr, arrivalDate);
-
-        // Message de succès
-        mv.setData("success", "✅ Réservation créée avec succès ! (ID: " + reservation.getId() + ")");
-        
-        // Recharger la liste des hôtels pour le formulaire
-        mv.setData("hotels", hotelRepository.findAll());
-
-    } catch (IllegalArgumentException e) {
-        mv.setData("error", e.getMessage());
         try {
+            // Parser la date
+            LocalDateTime arrivalDate = LocalDateTime.parse(arrivalDateStr, 
+                DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"));
+
+            // Créer la réservation via le service
+            Reservation reservation = reservationService.createReservation(
+                hotelId, customerId, passengerNbr, arrivalDate);
+
+            // Message de succès
+            mv.setData("success", "✅ Réservation créée avec succès ! (ID: " + reservation.getId() + ")");
+            
+            // Recharger la liste des hôtels pour le formulaire
             mv.setData("hotels", hotelRepository.findAll());
-        } catch (Exception ex) {
-            mv.setData("error", "Erreur lors du chargement des hôtels");
+
+        } catch (IllegalArgumentException e) {
+            mv.setData("error", e.getMessage());
+            try {
+                mv.setData("hotels", hotelRepository.findAll());
+            } catch (Exception ex) {
+                mv.setData("error", "Erreur lors du chargement des hôtels");
+            }
+        } catch (Exception e) {
+            mv.setData("error", "Erreur serveur : " + e.getMessage());
+            try {
+                mv.setData("hotels", hotelRepository.findAll());
+            } catch (Exception ex) {
+                mv.setData("error", "Erreur lors du chargement des hôtels");
+            }
         }
-    } catch (Exception e) {
-        mv.setData("error", "Erreur serveur : " + e.getMessage());
-        try {
-            mv.setData("hotels", hotelRepository.findAll());
-        } catch (Exception ex) {
-            mv.setData("error", "Erreur lors du chargement des hôtels");
-        }
+
+        return mv;
     }
-
-    return mv;
-}
     /**
      * Afficher la liste des réservations (Back-office)
      */

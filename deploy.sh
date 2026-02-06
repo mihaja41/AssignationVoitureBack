@@ -3,10 +3,12 @@
 # Script de déploiement Project1
 # ============================
 
+set -e  # Stoppe le script à la moindre erreur
+
 # === Variables communes ===
 TOMCAT_WEBAPPS="/home/anita/apache-tomcat-10.1.28/webapps"
 
-# === Variables Project1 (application) ===
+# === Variables Project1 ===
 PROJECT_DIR="Project1"
 APP_NAME="project1"
 PROJECT_SRC="$PROJECT_DIR/src/main/java"
@@ -14,74 +16,98 @@ PROJECT_WEB="$PROJECT_DIR/src/main/webapp"
 PROJECT_BUILD="$PROJECT_DIR/build"
 PROJECT_LIB="$PROJECT_DIR/lib"
 
-# === Vérification de l'existence du framework ===
+echo "========================================="
+echo "Déploiement de $APP_NAME"
+echo "========================================="
+
+# === Vérification du framework ===
 if [ ! -f "$PROJECT_LIB/fw.jar" ]; then
-    echo "❌ ERREUR : Le fichier $PROJECT_LIB/fw.jar n'existe pas !"
-    echo "Veuillez placer fw.jar dans $PROJECT_LIB/"
+    echo "❌ ERREUR : fw.jar introuvable dans $PROJECT_LIB"
     exit 1
 fi
 
-echo "=== Étape 1 : Vérification du Framework ==="
-echo "✓ Framework trouvé : $PROJECT_LIB/fw.jar"
+echo "✓ Framework détecté : fw.jar"
 
-# Construire le classpath pour Project1 (tous les jars dans lib)
-CLASSPATH=$(echo $PROJECT_LIB/*.jar | tr ' ' ':')
+# === Construction du CLASSPATH ===
+CLASSPATH="."
+for jar in "$PROJECT_LIB"/*.jar; do
+    CLASSPATH="$CLASSPATH:$jar"
+done
 
-echo "=== Étape 2 : Compilation du projet Project1 ==="
+echo "CLASSPATH = $CLASSPATH"
+
+# === Compilation ===
+echo "=== Étape 1 : Compilation ==="
+
 rm -rf "$PROJECT_BUILD"
 mkdir -p "$PROJECT_BUILD/WEB-INF/classes"
 
-if [ -d "$PROJECT_SRC" ]; then
-    find "$PROJECT_SRC" -name "*.java" > sources.txt
-    if [ -s sources.txt ]; then
-        javac -parameters -cp "$CLASSPATH" -d "$PROJECT_BUILD/WEB-INF/classes" @sources.txt
-        if [ $? -ne 0 ]; then
-            echo "❌ Erreur de compilation de l'application Project1"
-            rm sources.txt
-            exit 1
-        fi
-        echo "✓ Application Project1 compilée"
-    else
-        echo "ℹ Aucun fichier Java à compiler dans Project1"
-    fi
-    rm sources.txt
-else
-    echo "❌ ERREUR : Le dossier $PROJECT_SRC n'existe pas !"
+if [ ! -d "$PROJECT_SRC" ]; then
+    echo "❌ ERREUR : $PROJECT_SRC n'existe pas"
     exit 1
 fi
 
-# Copie des ressources web
-if [ -d "$PROJECT_WEB" ]; then
-    cp -r "$PROJECT_WEB"/* "$PROJECT_BUILD/"
-    echo "✓ Ressources web copiées"
+find "$PROJECT_SRC" -name "*.java" > sources.txt
+
+if [ ! -s sources.txt ]; then
+    echo "⚠ Aucun fichier Java trouvé"
 else
-    echo "❌ ERREUR : Le dossier $PROJECT_WEB n'existe pas !"
+    javac \
+        -parameters \
+        -classpath "$CLASSPATH" \
+        -d "$PROJECT_BUILD/WEB-INF/classes" \
+        @sources.txt
+    echo "✓ Compilation réussie"
+fi
+
+rm -f sources.txt
+
+# === Copie des ressources web ===
+echo "=== Étape 2 : Copie des ressources web ==="
+
+if [ ! -d "$PROJECT_WEB" ]; then
+    echo "❌ ERREUR : $PROJECT_WEB n'existe pas"
     exit 1
 fi
 
-# Copie des librairies
+cp -r "$PROJECT_WEB"/* "$PROJECT_BUILD/"
+echo "✓ Ressources web copiées"
+
+# === Copie des librairies ===
+echo "=== Étape 3 : Copie des librairies ==="
+
 mkdir -p "$PROJECT_BUILD/WEB-INF/lib"
 cp "$PROJECT_LIB"/*.jar "$PROJECT_BUILD/WEB-INF/lib/"
 echo "✓ Librairies copiées"
 
-echo "=== Étape 3 : Génération du WAR et déploiement ==="
-cd "$PROJECT_BUILD" || exit
-jar -cvf "$APP_NAME.war" *
-cd ../..
+# === Génération du WAR ===
+echo "=== Étape 4 : Génération du WAR ==="
 
-cp -f "$PROJECT_BUILD/$APP_NAME.war" "$TOMCAT_WEBAPPS/"
-echo "✓ WAR déployé"
+cd "$PROJECT_BUILD"
+jar -cf "$APP_NAME.war" .
+cd - > /dev/null
 
-# === Création automatique du dossier uploads ===
-echo "=== Étape 4 : Création du dossier uploads ==="
+echo "✓ WAR généré : $APP_NAME.war"
+
+# === Déploiement Tomcat ===
+echo "=== Étape 5 : Déploiement Tomcat ==="
+
+rm -rf "$TOMCAT_WEBAPPS/$APP_NAME"
+rm -f "$TOMCAT_WEBAPPS/$APP_NAME.war"
+
+cp "$PROJECT_BUILD/$APP_NAME.war" "$TOMCAT_WEBAPPS/"
+echo "✓ WAR copié dans Tomcat"
+
+# === Création dossier uploads ===
 UPLOAD_DIR="$TOMCAT_WEBAPPS/$APP_NAME/uploads"
 mkdir -p "$UPLOAD_DIR"
-echo "✓ Dossier uploads créé : $UPLOAD_DIR"
+chmod 777 "$UPLOAD_DIR"
+
+echo "✓ Dossier uploads prêt : $UPLOAD_DIR"
 
 echo ""
 echo "========================================="
-echo "✓ Déploiement terminé avec succès !"
+echo "🎉 Déploiement terminé avec succès !"
 echo "========================================="
-echo "WAR déployé : $TOMCAT_WEBAPPS/$APP_NAME.war"
-echo "Accédez à : http://localhost:8080/$APP_NAME/"
+echo "URL : http://localhost:8080/$APP_NAME/"
 echo ""
