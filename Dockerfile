@@ -4,7 +4,7 @@ FROM tomcat:10.1-jdk21
 RUN rm -rf /usr/local/tomcat/webapps/*
 
 # Copier ton WAR
-COPY build/project1.war /usr/local/tomcat/webapps/ROOT.war
+COPY Project1/build/Project1.war /usr/local/tomcat/webapps/ROOT.war
 
 # Railway utilise PORT
 ENV PORT=8080
