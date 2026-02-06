@@ -1,9 +1,9 @@
-FROM eclipse-temurin:21-jdk
+FROM tomcat:10.1-jdk21-temurin
 
-WORKDIR /app
+WORKDIR /usr/local/tomcat/webapps
 
-COPY target/assignation-voiture.war app.jar
+COPY targets/assignation-voiture.war ROOT.war
 
 EXPOSE 8080
 
-CMD ["java", "-jar", "app.jar"]
+CMD ["catalina.sh", "run"]
