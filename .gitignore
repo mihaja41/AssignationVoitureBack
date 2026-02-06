@@ -1,5 +1,4 @@
 # ===== Maven =====
-target/
 *.log
 
 # ===== Java =====
