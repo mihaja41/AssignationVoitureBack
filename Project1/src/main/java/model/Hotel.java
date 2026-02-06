@@ -5,7 +5,6 @@ import java.util.List;
 public class Hotel {
     private Long id;
     private String name;
-    private List<Reservation> reservations;
 
     public Hotel() {}
 
@@ -29,11 +28,4 @@ public class Hotel {
         this.name = name;
     }
 
-    public List<Reservation> getReservations() {
-        return reservations;
-    }
-
-    public void setReservations(List<Reservation> reservations) {
-        this.reservations = reservations;
-    }
 }
