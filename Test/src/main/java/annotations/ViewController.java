@@ -13,7 +13,6 @@ public class ViewController {
     public void testVueController () {
         System.out.println("A simple controller view controller");
     }
-
     @Route("/home")
     public ModelView redirectToHome() {
         ModelView view = new ModelView();
