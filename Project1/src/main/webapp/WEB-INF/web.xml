@@ -5,14 +5,14 @@
                              https://jakarta.ee/xml/ns/jakartaee/web-app_5_0.xsd"
          version="5.0">
     
-    <display-name>Project1</display-name>
+    <display-name>Project1 - Hotel Reservation</display-name>
     
     <servlet>
         <servlet-name>Front_Servlet</servlet-name>
-        <servlet-class>etu3255.framework.servlet.FrontServlet</servlet-class>
+        <servlet-class>servlet.FrontServlet</servlet-class>
         <init-param>
             <param-name>basePackage</param-name>
-            <param-value>annotations,config,model,repository,service</param-value>
+            <param-value>controller,model,repository,service,config</param-value>
         </init-param>
     </servlet>
     

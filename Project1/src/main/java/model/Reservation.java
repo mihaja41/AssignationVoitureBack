@@ -1,52 +1,31 @@
-package main.java.model;
+package model;
 
-import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "reservation")
 public class Reservation {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    // 🔗 Relation ManyToOne vers Hotel
-    @ManyToOne
-    @JoinColumn(name = "hotel_id", nullable = false)
     private Hotel hotel;
-
-    @Column(name = "customer_id", nullable = false)
-    private Long customerId;
-
-    @Column(name = "passenger_nbr", nullable = false)
-    private int passengerNbr;
-
-    @Column(name = "arrival_date", nullable = false)
+    private String customerId;  // ← Changé de Integer à String
+    private Integer passengerNbr;
     private LocalDateTime arrivalDate;
-
-    @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    // 🔹 Initialisation automatique de created_at
-    @PrePersist
-    protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-    }
-
-    // 🔹 Constructeurs
     public Reservation() {}
 
-    public Reservation(Hotel hotel, Long customerId, int passengerNbr, LocalDateTime arrivalDate) {
+    public Reservation(Hotel hotel, String customerId, Integer passengerNbr, LocalDateTime arrivalDate) {
         this.hotel = hotel;
         this.customerId = customerId;
         this.passengerNbr = passengerNbr;
         this.arrivalDate = arrivalDate;
     }
 
-    // 🔹 Getters & Setters
+    // Getters & Setters
     public Long getId() {
         return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public Hotel getHotel() {
@@ -57,22 +36,19 @@ public class Reservation {
         this.hotel = hotel;
     }
 
-    public Long getCustomerId() {
+    public String getCustomerId() {  // ← Changé de Integer à String
         return customerId;
     }
 
-    public void setCustomerId(Long customerId) {
+    public void setCustomerId(String customerId) {  // ← Changé de Integer à String
         this.customerId = customerId;
     }
 
-    public int getPassengerNbr() {
+    public Integer getPassengerNbr() {
         return passengerNbr;
     }
 
-    public void setPassengerNbr(int passengerNbr) {
-        if (passengerNbr <= 0) {
-            throw new IllegalArgumentException("Passenger number must be greater than 0");
-        }
+    public void setPassengerNbr(Integer passengerNbr) {
         this.passengerNbr = passengerNbr;
     }
 
@@ -86,5 +62,9 @@ public class Reservation {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
     }
 }

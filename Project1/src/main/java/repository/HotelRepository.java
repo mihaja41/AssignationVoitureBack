@@ -1,7 +1,7 @@
-package  main.java.repository;
+package repository;
 
-import  main.java.config.DatabaseConnection;
-import  main.java.model.Hotel;
+import config.DatabaseConnection;
+import model.Hotel;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -9,14 +9,16 @@ import java.util.List;
 
 public class HotelRepository {
 
-    public List<Hotel> findAll() {
+    /**
+     * Récupérer tous les hôtels
+     */
+    public List<Hotel> findAll() throws SQLException {
         List<Hotel> hotels = new ArrayList<>();
-
-        String sql = "SELECT id, name FROM hotel";
+        String sql = "SELECT id, name FROM hotel ORDER BY name";
 
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
 
             while (rs.next()) {
                 Hotel hotel = new Hotel();
@@ -24,33 +26,30 @@ public class HotelRepository {
                 hotel.setName(rs.getString("name"));
                 hotels.add(hotel);
             }
-
-        } catch (SQLException e) {
-            throw new RuntimeException("Error fetching hotels", e);
         }
 
         return hotels;
     }
 
-    public Hotel findById(Long id) {
+    /**
+     * Trouver un hôtel par ID
+     */
+    public Hotel findById(Long id) throws SQLException {
         String sql = "SELECT id, name FROM hotel WHERE id = ?";
 
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            ps.setLong(1, id);
+            stmt.setLong(1, id);
 
-            ResultSet rs = ps.executeQuery();
-
-            if (rs.next()) {
-                Hotel hotel = new Hotel();
-                hotel.setId(rs.getLong("id"));
-                hotel.setName(rs.getString("name"));
-                return hotel;
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    Hotel hotel = new Hotel();
+                    hotel.setId(rs.getLong("id"));
+                    hotel.setName(rs.getString("name"));
+                    return hotel;
+                }
             }
-
-        } catch (SQLException e) {
-            throw new RuntimeException("Error fetching hotel", e);
         }
 
         return null;
