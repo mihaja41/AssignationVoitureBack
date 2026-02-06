@@ -13,7 +13,7 @@
     <groupId>com.assignation</groupId>
     <artifactId>assignation-voiture</artifactId>
     <version>1.0.0</version>
-    <packaging>jar</packaging>
+    <packaging>war</packaging>
 
     <name>Assignation Voiture</name>
     <description>Spring MVC application with embedded Tomcat for Railway deployment</description>

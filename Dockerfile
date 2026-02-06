@@ -1,13 +1,9 @@
-FROM tomcat:10.1-jdk21
+FROM eclipse-temurin:21-jdk
 
-# Nettoyer les apps par défaut
-RUN rm -rf /usr/local/tomcat/webapps/*
+WORKDIR /app
 
-# Copier ton WAR
-COPY Project1/build/Project1.war /usr/local/tomcat/webapps/ROOT.war
+COPY target/assignation-voiture.war app.jar
 
-# Railway utilise PORT
-ENV PORT=8080
 EXPOSE 8080
 
-CMD ["catalina.sh", "run"]
+CMD ["java", "-jar", "app.jar"]
