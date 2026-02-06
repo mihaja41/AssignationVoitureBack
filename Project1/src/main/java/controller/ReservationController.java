@@ -10,7 +10,7 @@ import repository.ReservationRepository;
 import service.ReservationService;
 import view.ModelView;
 import model.Reservation;
-
+import dto.ReservationDTO;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -89,6 +89,24 @@ public class ReservationController {
         return mv;
     }
 
+
+    public ReservationDTO toDto(Reservation reservation) {
+         ReservationDTO dto = new ReservationDTO();
+        dto.setId(reservation.getId());
+        dto.setHotelName(reservation.getHotel().getName());
+        dto.setCustomerId(reservation.getCustomerId());
+        dto.setPassengerNbr(reservation.getPassengerNbr());
+        dto.setArrivalDate(reservation.getArrivalDate());
+    return dto;
+}
+
+public List<ReservationDTO> toDtoList(List<Reservation> reservations) {
+    return reservations.stream()
+            .map(this::toDto)
+            .toList();
+}
+
+
     /**
      * API : Créer une réservation (JSON pour Front-office Spring Boot)
      */
@@ -111,7 +129,7 @@ public class ReservationController {
                 hotelId, customerId, passengerNbr, arrivalDate);
 
             response.put("success", true);
-            response.put("reservation", reservation);
+            response.put("reservation", toDto(reservation));
             response.put("message", "Réservation créée avec succès");
 
         } catch (IllegalArgumentException e) {
@@ -130,7 +148,7 @@ public class ReservationController {
      */
     @Json
     @GetRouteMapping(value = "/api/reservations")
-    public List<Reservation> getReservationsAPI() throws Exception {
-        return reservationRepository.findAll();
+    public List<ReservationDTO> getReservationsAPI() throws Exception {
+        return toDtoList(reservationRepository.findAll());
     }
 }
