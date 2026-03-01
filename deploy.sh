@@ -98,6 +98,20 @@ rm -f "$TOMCAT_WEBAPPS/$APP_NAME.war"
 cp "$PROJECT_BUILD/$APP_NAME.war" "$TOMCAT_WEBAPPS/"
 echo "✓ WAR copié dans Tomcat"
 
+# === Attendre que Tomcat extraie le WAR ===
+echo "⏳ Attente de l'extraction du WAR par Tomcat..."
+WAIT_COUNT=0
+while [ ! -d "$TOMCAT_WEBAPPS/$APP_NAME/WEB-INF" ] && [ $WAIT_COUNT -lt 30 ]; do
+    sleep 1
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+done
+
+if [ -d "$TOMCAT_WEBAPPS/$APP_NAME/WEB-INF" ]; then
+    echo "✓ WAR extrait par Tomcat"
+else
+    echo "⚠ Timeout : le WAR n'a pas été extrait après 30s"
+fi
+
 # === Création dossier uploads ===
 UPLOAD_DIR="$TOMCAT_WEBAPPS/$APP_NAME/uploads"
 mkdir -p "$UPLOAD_DIR"
