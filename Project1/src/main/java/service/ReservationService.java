@@ -1,8 +1,8 @@
 package service;
 
-import model.Hotel;
+import model.Lieu;
 import model.Reservation;
-import repository.HotelRepository;
+import repository.LieuRepository;
 import repository.ReservationRepository;
 
 import java.sql.SQLException;
@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 
 public class ReservationService {
 
-    private final HotelRepository hotelRepository = new HotelRepository();
+    private final LieuRepository lieuRepository = new LieuRepository();
     private final ReservationRepository reservationRepository = new ReservationRepository();
 
     /**
@@ -19,10 +19,10 @@ public class ReservationService {
     public Reservation createReservation(Long hotelId, String customerId, Integer passengerNbr, LocalDateTime arrivalDate) 
             throws SQLException, IllegalArgumentException {
 
-        // Validation 1 : Vérifier que l'hôtel existe
-        Hotel hotel = hotelRepository.findById(hotelId);
-        if (hotel == null) {
-            throw new IllegalArgumentException("L'hôtel avec l'ID " + hotelId + " n'existe pas");
+        // Validation 1 : Vérifier que le lieu existe
+        Lieu lieu = lieuRepository.findById(hotelId);
+        if (lieu == null) {
+            throw new IllegalArgumentException("Le lieu avec l'ID " + hotelId + " n'existe pas");
         }
 
         // Validation 2 : Customer ID obligatoire
@@ -46,7 +46,7 @@ public class ReservationService {
         }
 
         // Créer la réservation
-        Reservation reservation = new Reservation(hotel, customerId, passengerNbr, arrivalDate);
+        Reservation reservation = new Reservation(lieu, customerId, passengerNbr, arrivalDate);
 
         // Sauvegarder
         return reservationRepository.save(reservation);

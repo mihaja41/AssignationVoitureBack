@@ -3,9 +3,9 @@ package controller;
 import class_annotations.Controller;
 import method_annotations.GetRouteMapping;
 import method_annotations.Json;
-import repository.HotelRepository;
+import repository.LieuRepository;
 import service.TokenService ; 
-import model.Hotel;
+import model.Lieu;
 import model.Token;
 import dto.TokenDTO ; 
 
@@ -14,19 +14,20 @@ import java.util.List;
 @Controller
 public class HotelController {
 
-    private final HotelRepository hotelRepository = new HotelRepository();
+    private final LieuRepository lieuRepository = new LieuRepository();
     private final TokenService   token = new TokenService() ; 
 
     /**
-     * API : Liste des hôtels (pour le front-office)
+     * API : Liste des lieux (pour le front-office)
+     * URL conservée /api/hotels pour compatibilité avec l'autre repo frontend
      */
     @Json
     @GetRouteMapping(value = "/api/hotels")
-    public List<Hotel> getHotels() throws Exception {
-        return hotelRepository.findAll();
+    public List<Lieu> getHotels() throws Exception {
+        return lieuRepository.findAll();
     }
     /**
-     * API : Liste des hôtels (pour le front-office)
+     * API : Génération de token (pour le front-office)
      */
     @Json
     @GetRouteMapping(value = "/token")

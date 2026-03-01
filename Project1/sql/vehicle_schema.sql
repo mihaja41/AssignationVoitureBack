@@ -1,5 +1,5 @@
 
-CREATE TYPE type_carburant_enum AS ENUM ('D', 'Es', 'H', 'El');
+CREATE TYPE type_carburant_enum  AS ENUM ('D', 'Es', 'H', 'El');
 
 CREATE TABLE vehicule (
     id BIGSERIAL PRIMARY KEY,
