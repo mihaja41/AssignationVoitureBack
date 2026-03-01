@@ -5,7 +5,7 @@ import method_annotations.GetRouteMapping;
 import method_annotations.Json;
 import method_annotations.PostRouteMapping;
 import method_annotations.RequestParam;
-import repository.HotelRepository;
+import repository.LieuRepository;
 import repository.ReservationRepository;
 import service.ReservationService;
 import view.ModelView;
@@ -22,7 +22,7 @@ public class ReservationController {
 
     private final ReservationService reservationService = new ReservationService();
     private final ReservationRepository reservationRepository = new ReservationRepository();
-    private final HotelRepository hotelRepository = new HotelRepository();
+    private final LieuRepository lieuRepository = new LieuRepository();
 
     /**
      * Afficher le formulaire d'ajout de réservation (Back-office)
@@ -30,7 +30,7 @@ public class ReservationController {
     @GetRouteMapping(value = "/reservations/form")
     public ModelView showForm() throws Exception {
         ModelView mv = new ModelView("/reservations/form.jsp");
-        mv.setData("hotels", hotelRepository.findAll());
+        mv.setData("hotels", lieuRepository.findAll());
         return mv;
     }
 
@@ -58,22 +58,22 @@ public class ReservationController {
             // Message de succès
             mv.setData("success", "✅ Réservation créée avec succès ! (ID: " + reservation.getId() + ")");
             
-            // Recharger la liste des hôtels pour le formulaire
-            mv.setData("hotels", hotelRepository.findAll());
+            // Recharger la liste des lieux pour le formulaire
+            mv.setData("hotels", lieuRepository.findAll());
 
         } catch (IllegalArgumentException e) {
             mv.setData("error", e.getMessage());
             try {
-                mv.setData("hotels", hotelRepository.findAll());
+                mv.setData("hotels", lieuRepository.findAll());
             } catch (Exception ex) {
-                mv.setData("error", "Erreur lors du chargement des hôtels");
+                mv.setData("error", "Erreur lors du chargement des lieux");
             }
         } catch (Exception e) {
             mv.setData("error", "Erreur serveur : " + e.getMessage());
             try {
-                mv.setData("hotels", hotelRepository.findAll());
+                mv.setData("hotels", lieuRepository.findAll());
             } catch (Exception ex) {
-                mv.setData("error", "Erreur lors du chargement des hôtels");
+                mv.setData("error", "Erreur lors du chargement des lieux");
             }
         }
 
@@ -93,7 +93,7 @@ public class ReservationController {
     public ReservationDTO toDto(Reservation reservation) {
          ReservationDTO dto = new ReservationDTO();
         dto.setId(reservation.getId());
-        dto.setHotelName(reservation.getHotel().getName());
+        dto.setHotelName(reservation.getLieuDepart().getLibelle());
         dto.setCustomerId(reservation.getCustomerId());
         dto.setPassengerNbr(reservation.getPassengerNbr());
         dto.setArrivalDate(reservation.getArrivalDate());

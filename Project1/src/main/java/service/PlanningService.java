@@ -138,9 +138,9 @@ public class PlanningService {
         dto.setArrivalDate(r.getArrivalDate());
         dto.setStatut(r.getStatut());
 
-        // Infos hôtel
-        if (r.getHotel() != null) {
-            dto.setHotelName(r.getHotel().getName());
+        // Infos lieu de départ (anciennement hôtel)
+        if (r.getLieuDepart() != null) {
+            dto.setHotelName(r.getLieuDepart().getLibelle());
         }
 
         // Infos véhicule (peut être null si non assigné)

@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 
 public class Reservation {
     private Long id;
-    private Hotel hotel;
+    private Lieu lieuDepart;
     private String customerId;  // ← Changé de Integer à String
     private Integer passengerNbr;
     private LocalDateTime arrivalDate;
@@ -18,17 +18,17 @@ public class Reservation {
 
     public Reservation() {}
 
-    public Reservation(Hotel hotel, String customerId, Integer passengerNbr, LocalDateTime arrivalDate) {
-        this.hotel = hotel;
+    public Reservation(Lieu lieuDepart, String customerId, Integer passengerNbr, LocalDateTime arrivalDate) {
+        this.lieuDepart = lieuDepart;
         this.customerId = customerId;
         this.passengerNbr = passengerNbr;
         this.arrivalDate = arrivalDate;
     }
 
-    public Reservation(Hotel hotel, String customerId, Integer passengerNbr, LocalDateTime arrivalDate,
+    public Reservation(Lieu lieuDepart, String customerId, Integer passengerNbr, LocalDateTime arrivalDate,
                        Lieu lieuDestination, Vehicule vehicule, String statut,
                        LocalDateTime heureDepart, LocalDateTime heureArrivee, LocalDateTime heureRetour) {
-        this.hotel = hotel;
+        this.lieuDepart = lieuDepart;
         this.customerId = customerId;
         this.passengerNbr = passengerNbr;
         this.arrivalDate = arrivalDate;
@@ -49,12 +49,23 @@ public class Reservation {
         this.id = id;
     }
 
-    public Hotel getHotel() {
-        return hotel;
+    /**
+     * Alias : getHotel() retourne lieuDepart pour compatibilité frontend
+     */
+    public Lieu getHotel() {
+        return lieuDepart;
     }
 
-    public void setHotel(Hotel hotel) {
-        this.hotel = hotel;
+    public void setHotel(Lieu lieuDepart) {
+        this.lieuDepart = lieuDepart;
+    }
+
+    public Lieu getLieuDepart() {
+        return lieuDepart;
+    }
+
+    public void setLieuDepart(Lieu lieuDepart) {
+        this.lieuDepart = lieuDepart;
     }
 
     public String getCustomerId() {  // ← Changé de Integer à String

@@ -55,6 +55,18 @@ public class Lieu {
         this.createdAt = createdAt;
     }
 
+    /**
+     * Alias pour compatibilité avec l'ancien modèle Hotel.
+     * Le frontend appelle getName() sur les objets retournés par /api/hotels.
+     */
+    public String getName() {
+        return libelle;
+    }
+
+    public void setName(String name) {
+        this.libelle = name;
+    }
+
     @Override
     public String toString() {
         return "Lieu{" +

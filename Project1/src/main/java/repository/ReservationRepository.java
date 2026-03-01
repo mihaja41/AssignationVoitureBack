@@ -1,7 +1,6 @@
 package repository;
 
 import config.DatabaseConnection;
-import model.Hotel;
 import model.Lieu;
 import model.Reservation;
 import model.Vehicule;
@@ -18,13 +17,13 @@ public class ReservationRepository {
      * Enregistrer une réservation
      */
     public Reservation save(Reservation reservation) throws SQLException {
-        String sql = "INSERT INTO reservation (hotel_id, customer_id, passenger_nbr, arrival_date) " +
+        String sql = "INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date) " +
                      "VALUES (?, ?, ?, ?) RETURNING id, created_at";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            stmt.setLong(1, reservation.getHotel().getId());
+            stmt.setLong(1, reservation.getLieuDepart().getId());
             stmt.setString(2, reservation.getCustomerId());  // ← Changé de setInt à setString
             stmt.setInt(3, reservation.getPassengerNbr());
             stmt.setTimestamp(4, Timestamp.valueOf(reservation.getArrivalDate()));
@@ -46,9 +45,9 @@ public class ReservationRepository {
     public List<Reservation> findAll() throws SQLException {
         List<Reservation> reservations = new ArrayList<>();
         String sql = "SELECT r.id, r.customer_id, r.passenger_nbr, r.arrival_date, r.created_at, " +
-                     "h.id as hotel_id, h.name as hotel_name " +
+                     "ld.id as lieu_depart_id, ld.libelle as lieu_depart_name " +
                      "FROM reservation r " +
-                     "JOIN hotel h ON r.hotel_id = h.id " +
+                     "JOIN lieu ld ON r.lieu_depart_id = ld.id " +
                      "ORDER BY r.created_at DESC";
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -56,13 +55,13 @@ public class ReservationRepository {
              ResultSet rs = stmt.executeQuery()) {
 
             while (rs.next()) {
-                Hotel hotel = new Hotel();
-                hotel.setId(rs.getLong("hotel_id"));
-                hotel.setName(rs.getString("hotel_name"));
+                Lieu lieuDepart = new Lieu();
+                lieuDepart.setId(rs.getLong("lieu_depart_id"));
+                lieuDepart.setLibelle(rs.getString("lieu_depart_name"));
 
                 Reservation reservation = new Reservation();
                 reservation.setId(rs.getLong("id"));
-                reservation.setHotel(hotel);
+                reservation.setLieuDepart(lieuDepart);
                 reservation.setCustomerId(rs.getString("customer_id"));  // ← Changé de getInt à getString
                 reservation.setPassengerNbr(rs.getInt("passenger_nbr"));
                 reservation.setArrivalDate(rs.getTimestamp("arrival_date").toLocalDateTime());
@@ -81,9 +80,9 @@ public class ReservationRepository {
     public List<Reservation> findByDate(LocalDateTime date) throws SQLException {
         List<Reservation> reservations = new ArrayList<>();
         String sql = "SELECT r.id, r.customer_id, r.passenger_nbr, r.arrival_date, r.created_at, " +
-                     "h.id as hotel_id, h.name as hotel_name " +
+                     "ld.id as lieu_depart_id, ld.libelle as lieu_depart_name " +
                      "FROM reservation r " +
-                     "JOIN hotel h ON r.hotel_id = h.id " +
+                     "JOIN lieu ld ON r.lieu_depart_id = ld.id " +
                      "WHERE DATE(r.arrival_date) = DATE(?) " +
                      "ORDER BY r.arrival_date";
 
@@ -94,13 +93,13 @@ public class ReservationRepository {
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    Hotel hotel = new Hotel();
-                    hotel.setId(rs.getLong("hotel_id"));
-                    hotel.setName(rs.getString("hotel_name"));
+                    Lieu lieuDepart = new Lieu();
+                    lieuDepart.setId(rs.getLong("lieu_depart_id"));
+                    lieuDepart.setLibelle(rs.getString("lieu_depart_name"));
 
                     Reservation reservation = new Reservation();
                     reservation.setId(rs.getLong("id"));
-                    reservation.setHotel(hotel);
+                    reservation.setLieuDepart(lieuDepart);
                     reservation.setCustomerId(rs.getString("customer_id"));  // ← Changé de getInt à getString
                     reservation.setPassengerNbr(rs.getInt("passenger_nbr"));
                     reservation.setArrivalDate(rs.getTimestamp("arrival_date").toLocalDateTime());
@@ -122,11 +121,11 @@ public class ReservationRepository {
         List<Reservation> reservations = new ArrayList<>();
         String sql = "SELECT r.id, r.customer_id, r.passenger_nbr, r.arrival_date, r.created_at, " +
                      "r.statut, r.heure_depart, r.heure_arrivee, r.heure_retour, " +
-                     "h.id AS hotel_id, h.name AS hotel_name, " +
+                     "ld.id AS lieu_depart_id, ld.libelle AS lieu_depart_name, " +
                      "v.id AS vehicule_id, v.reference AS vehicule_reference, v.nb_place AS vehicule_nb_place, v.type_carburant AS vehicule_type_carburant, " +
                      "l.id AS lieu_id, l.code AS lieu_code, l.libelle AS lieu_libelle " +
                      "FROM reservation r " +
-                     "JOIN hotel h ON r.hotel_id = h.id " +
+                     "JOIN lieu ld ON r.lieu_depart_id = ld.id " +
                      "LEFT JOIN vehicule v ON r.vehicule_id = v.id " +
                      "LEFT JOIN lieu l ON r.lieu_destination_id = l.id " +
                      "WHERE DATE(r.arrival_date) = DATE(?) " +
@@ -155,11 +154,11 @@ public class ReservationRepository {
         List<Reservation> reservations = new ArrayList<>();
         String sql = "SELECT r.id, r.customer_id, r.passenger_nbr, r.arrival_date, r.created_at, " +
                      "r.statut, r.heure_depart, r.heure_arrivee, r.heure_retour, " +
-                     "h.id AS hotel_id, h.name AS hotel_name, " +
+                     "ld.id AS lieu_depart_id, ld.libelle AS lieu_depart_name, " +
                      "v.id AS vehicule_id, v.reference AS vehicule_reference, v.nb_place AS vehicule_nb_place, v.type_carburant AS vehicule_type_carburant, " +
                      "l.id AS lieu_id, l.code AS lieu_code, l.libelle AS lieu_libelle " +
                      "FROM reservation r " +
-                     "JOIN hotel h ON r.hotel_id = h.id " +
+                     "JOIN lieu ld ON r.lieu_depart_id = ld.id " +
                      "LEFT JOIN vehicule v ON r.vehicule_id = v.id " +
                      "LEFT JOIN lieu l ON r.lieu_destination_id = l.id " +
                      "WHERE DATE(r.arrival_date) = DATE(?) " +
@@ -216,11 +215,11 @@ public class ReservationRepository {
         List<Reservation> reservations = new ArrayList<>();
         String sql = "SELECT r.id, r.customer_id, r.passenger_nbr, r.arrival_date, r.created_at, " +
                      "r.statut, r.heure_depart, r.heure_arrivee, r.heure_retour, " +
-                     "h.id AS hotel_id, h.name AS hotel_name, " +
+                     "ld.id AS lieu_depart_id, ld.libelle AS lieu_depart_name, " +
                      "v.id AS vehicule_id, v.reference AS vehicule_reference, v.nb_place AS vehicule_nb_place, v.type_carburant AS vehicule_type_carburant, " +
                      "l.id AS lieu_id, l.code AS lieu_code, l.libelle AS lieu_libelle " +
                      "FROM reservation r " +
-                     "JOIN hotel h ON r.hotel_id = h.id " +
+                     "JOIN lieu ld ON r.lieu_depart_id = ld.id " +
                      "LEFT JOIN vehicule v ON r.vehicule_id = v.id " +
                      "LEFT JOIN lieu l ON r.lieu_destination_id = l.id " +
                      "WHERE DATE(r.arrival_date) = DATE(?) " +
@@ -245,13 +244,13 @@ public class ReservationRepository {
      * Mapper un ResultSet complet (avec jointures vehicule et lieu) vers un objet Reservation
      */
     private Reservation mapFullReservation(ResultSet rs) throws SQLException {
-        Hotel hotel = new Hotel();
-        hotel.setId(rs.getLong("hotel_id"));
-        hotel.setName(rs.getString("hotel_name"));
+        Lieu lieuDepart = new Lieu();
+        lieuDepart.setId(rs.getLong("lieu_depart_id"));
+        lieuDepart.setLibelle(rs.getString("lieu_depart_name"));
 
         Reservation reservation = new Reservation();
         reservation.setId(rs.getLong("id"));
-        reservation.setHotel(hotel);
+        reservation.setLieuDepart(lieuDepart);
         reservation.setCustomerId(rs.getString("customer_id"));
         reservation.setPassengerNbr(rs.getInt("passenger_nbr"));
         reservation.setArrivalDate(rs.getTimestamp("arrival_date").toLocalDateTime());
