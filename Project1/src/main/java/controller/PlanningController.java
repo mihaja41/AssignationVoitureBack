@@ -18,6 +18,7 @@ public class PlanningController {
 
     /**
      * Page 1 : Afficher le formulaire de saisie de date.
+     * Le frontend affichera un champ date pour choisir la date de planification.
      */
     @GetRouteMapping(value = "/planning/form")
     public ModelView showDateForm() {
@@ -28,28 +29,32 @@ public class PlanningController {
     /**
      * Page 2 : Générer et afficher le planning pour une date donnée.
      * 
-     * Retourne un ModelView contenant :
-     *   - "attributions" : liste des Attribution assignées (véhicule + réservation + horaires calculés)
-     *   - "reservationsNonAssignees" : liste des Reservation sans véhicule
-     *   - "selectedDate" : la date saisie
+     * Reçoit la date saisie, lance l'algorithme d'attribution,
+     * puis retourne un ModelView contenant :
+     *   - "planningLines" : liste PlanningDTO des réservations assignées
+     *                       (colonnes: Véhicule, Réservation, Lieu, DateHeureDepart, DateHeureRetour)
+     *   - "unassignedReservations" : liste PlanningDTO des réservations non assignées
+     *   - "selectedDate" : la date saisie (pour affichage)
      */
     @PostRouteMapping(value = "/planning/generate")
     public ModelView generatePlanning(@RequestParam("date") String dateStr) {
         ModelView mv = new ModelView("/planning/result.jsp");
 
         try {
+            // Parser la date saisie (format yyyy-MM-dd depuis un input type="date")
             LocalDate selectedDate = LocalDate.parse(dateStr, DateTimeFormatter.ofPattern("yyyy-MM-dd"));
             LocalDateTime dateTime = selectedDate.atStartOfDay();
 
+            // Générer le planning (attribution automatique + résultat)
             PlanningService.PlanningResult result = planningService.genererPlanning(dateTime);
 
-            mv.setData("attributions", result.getAttributions());
-            mv.setData("reservationsNonAssignees", result.getReservationsNonAssignees());
+            // Données pour la page planning
+            mv.setData("planningLines", result.getPlanningLines());
+            mv.setData("unassignedReservations", result.getUnassignedReservations());
             mv.setData("selectedDate", selectedDate.toString());
 
         } catch (Exception e) {
             mv.setData("error", "Erreur lors de la génération du planning : " + e.getMessage());
-            e.printStackTrace();
         }
 
         return mv;
@@ -57,6 +62,7 @@ public class PlanningController {
 
     /**
      * Variante GET pour accéder au planning via URL avec paramètre date.
+     * Ex: /planning/result?date=2026-03-15
      */
     @GetRouteMapping(value = "/planning/result")
     public ModelView showPlanning(@RequestParam("date") String dateStr) {

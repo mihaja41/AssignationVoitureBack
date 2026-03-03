@@ -58,13 +58,11 @@ Algorithme implémenté dans genererPlanning(date) :
     2. Vérifier DISPONIBILITÉ :
        → Exclure véhicules déjà ASSIGNE dont heure_retour > heure_depart de cette réservation
        → (évite double assignation / conflit planning)
-    3. Si >= 2 véhicules éligibles → priorité NB PLACES LE PLUS PROCHE du nb passagers
-       (ex: 8 passagers → véhicule 9 places plutôt que 10 places)
-    4. Si >= 2 véhicules avec même nb de places (le plus proche) → priorité DIESEL (TypeCarburant.D)
-    5. Si >= 2 Diesel avec même nb places → choix aléatoire (random) parmi eux
-    6. Si 1 seul Diesel parmi les plus proches → on le prend
-    7. Si 0 Diesel parmi les plus proches → random parmi les plus proches
-    8. Si 0 véhicule disponible → réservation reste NON_ASSIGNE
+    3. Si >= 2 véhicules éligibles → priorité DIESEL (TypeCarburant.D)
+    4. Si >= 2 Diesel éligibles   → choix aléatoire (random) parmi eux
+    5. Si 1 seul Diesel           → on le prend
+    6. Si 0 Diesel                → random parmi les autres disponibles
+    7. Si 0 véhicule disponible   → réservation reste NON_ASSIGNE
 
 Fichier modifié :
   - repository/VehiculeRepository.java

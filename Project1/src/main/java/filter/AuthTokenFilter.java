@@ -12,7 +12,7 @@ import java.time.OffsetDateTime;
 public class AuthTokenFilter implements Filter {
 
     private TokenRepository tokenRepository;
-    private String tokenValues = "Bearer 8f3d3a2c-01a7-4cfd-ba4c-cbe255690ccb" ; 
+    private String tokenValues = "Bearer 790eeb70-0dd1-43bb-a457-49d922272adf" ; 
 
     @Override
     public void init(FilterConfig filterConfig) {
