@@ -1,3 +1,19 @@
+-- ==========================================
+-- SCRIPT DE RÉINITIALISATION COMPLET
+-- Base de données: hotel_reservation (PostgreSQL)
+-- Sprint 3 - Planification & Attribution Véhicules
+-- Date: 2026-03-01
+-- ==========================================
+
+-- ⚠️ ATTENTION : Ce script supprime et recrée TOUTE la base de données.
+-- Utiliser uniquement pour les tests / démonstrations.
+-- Exécuter en tant que superuser PostgreSQL (ex: postgres).
+-- ⚠️ IMPORTANT : Exécuter ce script depuis la base "postgres" et non "hotel_reservation"
+--   psql -U postgres -d postgres -f reinit.sql
+
+-- ==========================================
+-- 0. DROP & CREATE DATABASE
+-- ==========================================
 -- psql -U postgres -d postgres -f /home/anita/Documents/itu_lesson/S5/FRAME_WORK/Project/AssignationVoitureBack/Project1/sql/reinit.sql
 
 -- Fermer toutes les connexions actives à la base
@@ -19,7 +35,6 @@ DROP TABLE IF EXISTS reservation CASCADE;
 DROP TABLE IF EXISTS vehicule CASCADE;
 DROP TABLE IF EXISTS lieu CASCADE;
 DROP TABLE IF EXISTS hotel CASCADE;
-DROP TABLE IF EXISTS parameters CASCADE;
 DROP TABLE IF EXISTS token CASCADE;
 
 DROP TYPE IF EXISTS type_carburant_enum CASCADE;
@@ -64,7 +79,7 @@ CREATE TABLE vehicule (
     type_carburant type_carburant_enum NOT NULL
 );
 
--- Table RESERVATION (simplifiée : l'attribution véhicule est calculée en mémoire par le PlanningService)
+-- Table RESERVATION
 CREATE TABLE reservation (
     id BIGSERIAL PRIMARY KEY,
     lieu_depart_id BIGINT NOT NULL REFERENCES lieu(id) ON DELETE CASCADE,
@@ -72,16 +87,12 @@ CREATE TABLE reservation (
     passenger_nbr INT NOT NULL,
     arrival_date TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    lieu_destination_id BIGINT REFERENCES lieu(id) ON DELETE SET NULL
-);
-
--- Table PARAMETERS (paramètres de calcul : vitesse moyenne, temps d'attente)
-CREATE TABLE parameters (
-    id SERIAL PRIMARY KEY,
-    key TEXT NOT NULL UNIQUE,
-    value TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    lieu_destination_id BIGINT REFERENCES lieu(id) ON DELETE SET NULL,
+    vehicule_id BIGINT REFERENCES vehicule(id) ON DELETE SET NULL,
+    statut VARCHAR(50) DEFAULT 'NON_ASSIGNE',
+    heure_depart TIMESTAMP,
+    heure_arrivee TIMESTAMP,
+    heure_retour TIMESTAMP
 );
 
 -- Table DISTANCE (distances entre lieux)
@@ -98,9 +109,11 @@ CREATE TABLE distance (
 -- 4. CRÉATION DES INDEX
 -- ==========================================
 
+CREATE INDEX idx_reservation_statut ON reservation(statut);
+CREATE INDEX idx_reservation_heure_depart ON reservation(heure_depart);
+CREATE INDEX idx_reservation_vehicule_id ON reservation(vehicule_id);
 CREATE INDEX idx_reservation_lieu_destination ON reservation(lieu_destination_id);
 CREATE INDEX idx_reservation_lieu_depart ON reservation(lieu_depart_id);
-CREATE INDEX idx_reservation_arrival_date ON reservation(arrival_date);
 CREATE INDEX idx_lieu_code ON lieu(code);
 CREATE INDEX idx_distance_from_to ON distance(from_lieu_id, to_lieu_id);
 
@@ -120,15 +133,17 @@ INSERT INTO lieu (code, libelle) VALUES
 ('SAMBAVA', 'Sambava Airport');
 
 -- 5.2 Distances entre lieux (km)
--- UNE SEULE ENTRÉE par paire de lieux (pas de doublon A→B / B→A)
--- La distance est la même dans les deux sens.
--- Le code Java cherche dans les deux sens automatiquement.
 INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
-(1, 4, 35.50),    -- Colbert ↔ Ivato
-(1, 5, 250.00),   -- Colbert ↔ Nosy Be
-(1, 6, 180.00),   -- Colbert ↔ Sainte-Marie
-(4, 5, 285.00),   -- Ivato ↔ Nosy Be
-(4, 6, 200.00);   -- Ivato ↔ Sainte-Marie
+(1, 4, 35.50),    -- Colbert -> Ivato
+(4, 1, 35.50),    -- Ivato -> Colbert
+(1, 5, 250.00),   -- Colbert -> Nosy Be
+(5, 1, 250.00),   -- Nosy Be -> Colbert
+(1, 6, 180.00),   -- Colbert -> Sainte-Marie
+(6, 1, 180.00),   -- Sainte-Marie -> Colbert
+(4, 5, 285.00),   -- Ivato -> Nosy Be
+(5, 4, 285.00),   -- Nosy Be -> Ivato
+(4, 6, 200.00),   -- Ivato -> Sainte-Marie
+(6, 4, 200.00);   -- Sainte-Marie -> Ivato
 
 -- 5.3 Véhicules (5 véhicules avec différents carburants et capacités)
 INSERT INTO vehicule (reference, nb_place, type_carburant) VALUES
@@ -138,77 +153,61 @@ INSERT INTO vehicule (reference, nb_place, type_carburant) VALUES
 ('AV-004', 5, 'El'),   -- Électrique, 5 places
 ('AV-005', 8, 'D');     -- Diesel, 8 places
 
--- 5.4 Paramètres de calcul
-INSERT INTO parameters (key, value) VALUES
-('vitesse_moyenne', '30'),    -- 30 km/h
-('temps_attente', '30');      -- 30 minutes
-
-
+-- 5.4 Réservations de test
 -- ======================================================================
--- DATE: 2026-03-15 → Plusieurs réservations pour tester l'algorithme
+-- DATE: 2026-03-15 → Mix de réservations assignées et non assignées
 -- ======================================================================
 
--- Résa 1 : 4 passagers, départ Colbert → Ivato (distance: 35.5 km)
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(1, 'CLI001', 4, '2026-03-15 14:00:00', 4);
+-- Résa 1 : 4 passagers, DÉJÀ ASSIGNÉE à AV-001 (Diesel 4p), départ Colbert → Ivato
+INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id, vehicule_id, statut, heure_depart, heure_arrivee, heure_retour) VALUES
+(1, 'CLI001', 4, '2026-03-15 14:00:00', 4, 1, 'ASSIGNE', '2026-03-15 08:00:00', '2026-03-15 14:00:00', '2026-03-15 18:00:00');
 
--- Résa 2 : 3 passagers, départ Carlton → Nosy Be (distance: 250 km — pas de distance directe Carlton→Nosy Be !)
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(2, 'CLI002', 3, '2026-03-15 16:00:00', 5);
+-- Résa 2 : 3 passagers, DÉJÀ ASSIGNÉE à AV-003 (Diesel 7p), départ Carlton → Nosy Be
+INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id, vehicule_id, statut, heure_depart, heure_arrivee, heure_retour) VALUES
+(2, 'CLI002', 3, '2026-03-15 16:00:00', 5, 3, 'ASSIGNE', '2026-03-15 10:00:00', '2026-03-15 16:00:00', '2026-03-15 20:00:00');
 
--- Résa 3 : 6 passagers, départ Colbert → Sainte-Marie (distance: 180 km)
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(1, 'CLI003', 6, '2026-03-15 09:00:00', 6);
+-- Résa 3 : 6 passagers, NON_ASSIGNE (nécessite véhicule >= 6 places), départ Colbert → Sainte-Marie
+INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id, statut, heure_depart, heure_arrivee, heure_retour) VALUES
+(1, 'CLI003', 6, '2026-03-15 09:00:00', 6, 'NON_ASSIGNE', '2026-03-15 06:00:00', '2026-03-15 09:00:00', '2026-03-15 15:00:00');
 
--- Résa 4 : 2 passagers, départ Ibis → Ivato (conflit horaire potentiel avec Résa 1)
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(3, 'CLI004', 2, '2026-03-15 14:00:00', 4);
+-- Résa 4 : 2 passagers, NON_ASSIGNE, départ Ibis → Ivato (conflit horaire potentiel avec Résa 1)
+INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id, statut, heure_depart, heure_arrivee, heure_retour) VALUES
+(3, 'CLI004', 2, '2026-03-15 14:00:00', 4, 'NON_ASSIGNE', '2026-03-15 08:00:00', '2026-03-15 14:00:00', '2026-03-15 19:00:00');
 
--- Résa 5 : 10 passagers (aucun véhicule assez grand → restera NON_ASSIGNE)
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(1, 'CLI005', 10, '2026-03-15 11:00:00', 5);
-
--- ======================================================================
--- DATE: 2026-03-16 → Toutes les réservations (pour tester l'algo complet)
--- ======================================================================
-
--- Résa 6 : 4 passagers, départ Carlton → Ivato
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(2, 'CLI006', 4, '2026-03-16 10:00:00', 4);
-
--- Résa 7 : 3 passagers, départ Colbert → Sainte-Marie
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(1, 'CLI007', 3, '2026-03-16 15:00:00', 6);
-
--- Résa 8 : 5 passagers, départ Ibis → Nosy Be
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(3, 'CLI008', 5, '2026-03-16 12:00:00', 5);
+-- Résa 5 : 10 passagers, NON_ASSIGNE (aucun véhicule assez grand → restera NON_ASSIGNE)
+INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id, statut, heure_depart, heure_arrivee, heure_retour) VALUES
+(1, 'CLI005', 10, '2026-03-15 11:00:00', 5, 'NON_ASSIGNE', '2026-03-15 07:00:00', '2026-03-15 11:00:00', '2026-03-15 16:00:00');
 
 -- ======================================================================
--- DATE: 2026-03-20 → Pour tester une autre date
+-- DATE: 2026-03-16 → Toutes NON_ASSIGNE (pour tester l'algo d'attribution)
 -- ======================================================================
 
--- Résa 9 : 2 passagers, départ Colbert → Ivato
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(1, 'CLI009', 2, '2026-03-20 09:00:00', 4);
+-- Résa 6 : 4 passagers, NON_ASSIGNE, départ Carlton → Ivato
+INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id, statut, heure_depart, heure_arrivee, heure_retour) VALUES
+(2, 'CLI006', 4, '2026-03-16 10:00:00', 4, 'NON_ASSIGNE', '2026-03-16 06:00:00', '2026-03-16 10:00:00', '2026-03-16 14:00:00');
 
--- Résa 10 : 4 passagers, départ Carlton → Nosy Be
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(2, 'CLI010', 4, '2026-03-20 14:00:00', 5);
+-- Résa 7 : 3 passagers, NON_ASSIGNE, départ Colbert → Sainte-Marie (même date, pas de conflit)
+INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id, statut, heure_depart, heure_arrivee, heure_retour) VALUES
+(1, 'CLI007', 3, '2026-03-16 15:00:00', 6, 'NON_ASSIGNE', '2026-03-16 09:00:00', '2026-03-16 15:00:00', '2026-03-16 19:00:00');
+
+-- Résa 8 : 5 passagers, NON_ASSIGNE, départ Ibis → Nosy Be
+INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id, statut, heure_depart, heure_arrivee, heure_retour) VALUES
+(3, 'CLI008', 5, '2026-03-16 12:00:00', 5, 'NON_ASSIGNE', '2026-03-16 07:00:00', '2026-03-16 12:00:00', '2026-03-16 17:00:00');
+
+-- ======================================================================
+-- DATE: 2026-03-20 → Toutes DÉJÀ ASSIGNÉES (pour tester affichage planning existant)
+-- ======================================================================
+
+-- Résa 9 : 2 passagers, ASSIGNE à AV-002 (Essence 4p), départ Colbert → Ivato
+INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id, vehicule_id, statut, heure_depart, heure_arrivee, heure_retour) VALUES
+(1, 'CLI009', 2, '2026-03-20 09:00:00', 4, 2, 'ASSIGNE', '2026-03-20 06:00:00', '2026-03-20 09:00:00', '2026-03-20 13:00:00');
+
+-- Résa 10 : 4 passagers, ASSIGNE à AV-005 (Diesel 8p), départ Carlton → Nosy Be
+INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id, vehicule_id, statut, heure_depart, heure_arrivee, heure_retour) VALUES
+(2, 'CLI010', 4, '2026-03-20 14:00:00', 5, 5, 'ASSIGNE', '2026-03-20 08:00:00', '2026-03-20 14:00:00', '2026-03-20 20:00:00');
 
 -- ==========================================
--- 6. AJOUT DE DISTANCES MANQUANTES
--- (pour que toutes les réservations aient une distance)
--- ==========================================
-
-INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
-(2, 4, 30.00),    -- Carlton ↔ Ivato
-(3, 4, 28.00),    -- Ibis ↔ Ivato
-(2, 5, 260.00),   -- Carlton ↔ Nosy Be
-(3, 5, 255.00);   -- Ibis ↔ Nosy Be
-
--- ==========================================
--- 7. VÉRIFICATION
+-- 6. VÉRIFICATION
 -- ==========================================
 
 SELECT 'Lieux' AS table_name, COUNT(*) AS total FROM lieu
@@ -217,6 +216,8 @@ SELECT 'Distances', COUNT(*) FROM distance
 UNION ALL
 SELECT 'Véhicules', COUNT(*) FROM vehicule
 UNION ALL
-SELECT 'Paramètres', COUNT(*) FROM parameters
+SELECT 'Réservations (total)', COUNT(*) FROM reservation
 UNION ALL
-SELECT 'Réservations (total)', COUNT(*) FROM reservation;
+SELECT 'Réservations ASSIGNE', COUNT(*) FROM reservation WHERE statut = 'ASSIGNE'
+UNION ALL
+SELECT 'Réservations NON_ASSIGNE', COUNT(*) FROM reservation WHERE statut = 'NON_ASSIGNE';

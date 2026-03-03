@@ -1,17 +1,12 @@
 package service;
 
-import model.Attribution;
-import model.Distance;
+import dto.PlanningDTO;
 import model.Reservation;
 import model.TypeCarburant;
 import model.Vehicule;
-import repository.DistanceRepository;
-import repository.ParametreRepository;
 import repository.ReservationRepository;
 import repository.VehiculeRepository;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -21,210 +16,176 @@ import java.util.stream.Collectors;
 
 /**
  * Service de planification et d'attribution automatique de véhicules.
- * 
- * ATTRIBUTION STATIQUE : les attributions sont calculées en mémoire uniquement,
- * aucune modification en base de données.
- *
- * Calcul des horaires :
- *   - dateHeureDepart = reservation.arrivalDate
- *   - distanceAllerRetour = distance(lieuDepart → lieuDestination) × 2
- *   - duree (heures) = distanceAllerRetour / vitesseMoyenne
- *   - dateHeureRetour = dateHeureDepart + duree
  *
  * Algorithme d'attribution :
- * 1. Pour chaque réservation à la date donnée :
- *    - Chercher les véhicules avec nb_places >= passengerNbr
- *    - Exclure les véhicules déjà occupés (dont dateHeureRetour > dateHeureDepart)
- *    - Priorité : nb places le plus proche, puis Diesel
+ * 1. Pour chaque réservation NON_ASSIGNE à la date donnée :
+ *    - Chercher les véhicules avec nb_places >= reservation.passengerNbr
+ *    - Vérifier la disponibilité : heure_retour du véhicule <= heure_depart de la réservation
+ *    - Si >= 2 véhicules éligibles : priorité au Diesel (D)
+ *    - Si >= 2 véhicules Diesel éligibles : choix aléatoire parmi eux
  *    - Si aucun véhicule disponible : la réservation reste NON_ASSIGNE
  */
 public class PlanningService {
 
     private final ReservationRepository reservationRepository = new ReservationRepository();
     private final VehiculeRepository vehiculeRepository = new VehiculeRepository();
-    private final DistanceRepository distanceRepository = new DistanceRepository();
-    private final ParametreRepository parametreRepository = new ParametreRepository();
 
     /**
      * Générer le planning pour une date donnée.
-     * Attribution STATIQUE (en mémoire uniquement, aucune modification en base).
-     * Retourne la liste des Attribution assignées et la liste des réservations non assignées.
+     * Lance l'attribution automatique, puis retourne :
+     * - La liste des lignes de planning (réservations assignées)
+     * - La liste des réservations non assignées
      */
     public PlanningResult genererPlanning(LocalDateTime date) throws SQLException {
 
-        // 1. Charger les paramètres
-        double vitesseMoyenne = parametreRepository.getVitesseMoyenne();   // km/h
+        // 1. Récupérer les réservations NON_ASSIGNE pour cette date
+        List<Reservation> nonAssignees = reservationRepository.findUnassignedByDate(date);
 
-        // 2. Récupérer toutes les réservations pour cette date
-        List<Reservation> reservations = reservationRepository.findByDate(date);
-
-        // 3. Attribution en mémoire
-        List<Attribution> attributions = new ArrayList<>();
-        List<Reservation> nonAssignees = new ArrayList<>();
-
-        for (Reservation reservation : reservations) {
-            // Calculer la distance aller-retour
-            BigDecimal distanceAller = getDistanceAllerSimple(reservation);
-
-            if (distanceAller == null) {
-                // Pas de distance trouvée → non assignable
-                nonAssignees.add(reservation);
-                continue;
-            }
-
-            BigDecimal distanceAllerRetour = distanceAller.multiply(BigDecimal.valueOf(2));
-
-            // dateHeureDepart = arrivalDate (le véhicule part à l'heure d'arrivée du client)
-            LocalDateTime dateHeureDepart = reservation.getArrivalDate();
-
-            // duree en heures = distanceAllerRetour / vitesseMoyenne
-            double dureeHeures = distanceAllerRetour.doubleValue() / vitesseMoyenne;
-            // Convertir en minutes (pas de temps d'attente pour l'instant)
-            long dureeMinutes = Math.round(dureeHeures * 60);
-
-            LocalDateTime dateHeureRetour = dateHeureDepart.plusMinutes(dureeMinutes);
-
-            // Chercher véhicules disponibles (assez de places + pas de conflit horaire)
-            Vehicule choisi = attribuerVehiculeEnMemoire(reservation, attributions, dateHeureDepart, dateHeureRetour);
-
-            if (choisi != null) {
-                // Créer une attribution en mémoire
-                Attribution attribution = new Attribution();
-                attribution.setVehicule(choisi);
-                attribution.setReservation(reservation);
-                attribution.setDateHeureDepart(dateHeureDepart);
-                attribution.setDateHeureRetour(dateHeureRetour);
-                attribution.setDistanceKm(distanceAller);
-                attribution.setDistanceAllerRetourKm(distanceAllerRetour);
-                attribution.setStatut("ASSIGNE");
-
-                attributions.add(attribution);
-            } else {
-                nonAssignees.add(reservation);
-            }
+        // 2. Pour chaque réservation non assignée, tenter l'attribution
+        for (Reservation reservation : nonAssignees) {
+            attribuerVehicule(reservation);
         }
 
-        return new PlanningResult(attributions, nonAssignees);
-    }
+        // 3. Après attribution, récupérer le résultat final
+        List<Reservation> assignees = reservationRepository.findAssignedByDate(date);
+        List<Reservation> restantesNonAssignees = reservationRepository.findUnassignedByDate(date);
 
-    /**
-     * Récupérer la distance aller simple entre le lieu de départ et le lieu de destination.
-     */
-    private BigDecimal getDistanceAllerSimple(Reservation reservation) throws SQLException {
-        if (reservation.getLieuDepart() == null || reservation.getLieuDestination() == null) {
-            return null;
-        }
-
-        Distance distance = distanceRepository.findByFromAndTo(
-                reservation.getLieuDepart().getId(),
-                reservation.getLieuDestination().getId());
-
-        return (distance != null) ? distance.getKmDistance() : null;
-    }
-
-    /**
-     * Attribution en mémoire d'un véhicule à une réservation.
-     * Vérifie les conflits horaires avec les attributions déjà faites dans cette simulation.
-     * Ne modifie PAS la base de données.
-     */
-    private Vehicule attribuerVehiculeEnMemoire(Reservation reservation, List<Attribution> attributionsExistantes,
-                                                 LocalDateTime dateHeureDepart, LocalDateTime dateHeureRetour) throws SQLException {
-        // Chercher véhicules avec assez de places
-        List<Vehicule> disponibles = vehiculeRepository.findAvailableVehicules(reservation.getPassengerNbr());
-
-        // Exclure les véhicules déjà occupés dans cette simulation (conflit horaire)
-        disponibles = disponibles.stream()
-                .filter(v -> !hasConflitHoraire(v.getId(), dateHeureDepart, dateHeureRetour, attributionsExistantes))
+        // 4. Convertir en DTOs
+        List<PlanningDTO> planningLines = assignees.stream()
+                .map(this::toPlanningDTO)
                 .collect(Collectors.toList());
 
-        if (disponibles.isEmpty()) {
-            return null;
-        }
+        List<PlanningDTO> unassignedLines = restantesNonAssignees.stream()
+                .map(this::toPlanningDTO)
+                .collect(Collectors.toList());
 
-        return choisirVehicule(disponibles, reservation.getPassengerNbr());
+        return new PlanningResult(planningLines, unassignedLines);
     }
 
     /**
-     * Vérifier si un véhicule a un conflit horaire avec les attributions déjà faites.
-     * Conflit = le véhicule est occupé (pas encore de retour au moment du nouveau départ).
+     * Algorithme d'attribution d'un véhicule à une réservation.
      */
-    private boolean hasConflitHoraire(Long vehiculeId, LocalDateTime nouveauDepart, LocalDateTime nouveauRetour,
-                                       List<Attribution> attributionsExistantes) {
-        for (Attribution t : attributionsExistantes) {
-            if (t.getVehicule().getId().equals(vehiculeId)) {
-                // Conflit si les plages horaires se chevauchent
-                // Pas de conflit si : nouveauRetour <= existantDepart OU nouveauDepart >= existantRetour
-                boolean pasDeConflit = nouveauRetour.compareTo(t.getDateHeureDepart()) <= 0
-                        || nouveauDepart.compareTo(t.getDateHeureRetour()) >= 0;
-                if (!pasDeConflit) {
-                    return true;
-                }
-            }
+    private void attribuerVehicule(Reservation reservation) throws SQLException {
+        // Heure de départ : utiliser heure_depart si définie, sinon arrival_date
+        LocalDateTime heureDepart = reservation.getHeureDepart() != null
+                ? reservation.getHeureDepart()
+                : reservation.getArrivalDate();
+
+        // Chercher véhicules disponibles (nb_places >= passengerNbr ET pas de conflit horaire)
+        List<Vehicule> disponibles = vehiculeRepository.findAvailableVehicules(
+                reservation.getPassengerNbr(), heureDepart);
+
+        if (disponibles.isEmpty()) {
+            // Aucun véhicule disponible → reste NON_ASSIGNE
+            return;
         }
-        return false;
+
+        Vehicule choisi = choisirVehicule(disponibles);
+
+        if (choisi != null) {
+            // Assigner le véhicule à la réservation
+            reservationRepository.updateAssignment(
+                    reservation.getId(),
+                    choisi.getId(),
+                    "ASSIGNE",
+                    heureDepart,
+                    reservation.getHeureArrivee() != null ? reservation.getHeureArrivee() : reservation.getArrivalDate(),
+                    reservation.getHeureRetour()
+            );
+        }
     }
 
     /**
      * Choisir le meilleur véhicule selon les règles métier :
-     * 1. Priorité au nb de places le plus PROCHE du nb de passagers
-     * 2. Si plusieurs avec même nb de places → priorité DIESEL
-     * 3. Si plusieurs Diesel → choix aléatoire
-     * 4. Si aucun Diesel → choix aléatoire
+     * 1. Si >= 2 véhicules éligibles → priorité Diesel
+     * 2. Si >= 2 Diesel → random parmi les Diesel
+     * 3. Sinon → prendre le seul disponible
      */
-    private Vehicule choisirVehicule(List<Vehicule> disponibles, int passengerNbr) {
+    private Vehicule choisirVehicule(List<Vehicule> disponibles) {
         if (disponibles.size() == 1) {
             return disponibles.get(0);
         }
 
-        // Étape 1 : Trouver le nb de places minimum (le plus proche du nb passagers)
-        int minPlaces = disponibles.stream()
-                .mapToInt(Vehicule::getNbPlace)
-                .min()
-                .orElse(Integer.MAX_VALUE);
-
-        // Étape 2 : Garder uniquement les véhicules avec ce nb de places minimum
-        List<Vehicule> plusProches = disponibles.stream()
-                .filter(v -> v.getNbPlace() == minPlaces)
-                .collect(Collectors.toList());
-
-        if (plusProches.size() == 1) {
-            return plusProches.get(0);
-        }
-
-        // Étape 3 : Parmi les plus proches, priorité Diesel
-        List<Vehicule> diesels = plusProches.stream()
+        // Filtrer les véhicules Diesel
+        List<Vehicule> diesels = disponibles.stream()
                 .filter(v -> v.getTypeCarburant() == TypeCarburant.D)
                 .collect(Collectors.toList());
 
         if (diesels.size() >= 2) {
+            // >= 2 Diesel disponibles → choix aléatoire parmi les Diesel
             Collections.shuffle(diesels);
             return diesels.get(0);
         } else if (diesels.size() == 1) {
+            // 1 seul Diesel → on le prend en priorité
             return diesels.get(0);
         } else {
-            Collections.shuffle(plusProches);
-            return plusProches.get(0);
+            // Aucun Diesel → choix aléatoire parmi tous les disponibles
+            Collections.shuffle(disponibles);
+            return disponibles.get(0);
         }
+    }
+
+    /**
+     * Convertir une Reservation en PlanningDTO
+     */
+    private PlanningDTO toPlanningDTO(Reservation r) {
+        PlanningDTO dto = new PlanningDTO();
+
+        // Infos réservation
+        dto.setReservationId(r.getId());
+        dto.setCustomerId(r.getCustomerId());
+        dto.setPassengerNbr(r.getPassengerNbr());
+        dto.setArrivalDate(r.getArrivalDate());
+        dto.setStatut(r.getStatut());
+
+        // Infos lieu de départ (anciennement hôtel)
+        if (r.getLieuDepart() != null) {
+            dto.setHotelName(r.getLieuDepart().getLibelle());
+        }
+
+        // Infos véhicule (peut être null si non assigné)
+        if (r.getVehicule() != null) {
+            dto.setVehiculeId(r.getVehicule().getId());
+            dto.setVehiculeReference(r.getVehicule().getReference());
+            dto.setVehiculeNbPlace(r.getVehicule().getNbPlace());
+            if (r.getVehicule().getTypeCarburant() != null) {
+                dto.setVehiculeTypeCarburant(r.getVehicule().getTypeCarburant().name());
+            }
+        }
+
+        // Infos lieu (peut être null)
+        if (r.getLieuDestination() != null) {
+            dto.setLieuId(r.getLieuDestination().getId());
+            dto.setLieuCode(r.getLieuDestination().getCode());
+            dto.setLieuLibelle(r.getLieuDestination().getLibelle());
+        }
+
+        // Horaires
+        dto.setHeureDepart(r.getHeureDepart());
+        dto.setHeureArrivee(r.getHeureArrivee());
+        dto.setHeureRetour(r.getHeureRetour());
+
+        return dto;
     }
 
     /**
      * Classe interne pour retourner le résultat du planning.
      */
     public static class PlanningResult {
-        private final List<Attribution> attributions;
-        private final List<Reservation> reservationsNonAssignees;
+        private final List<PlanningDTO> planningLines;
+        private final List<PlanningDTO> unassignedReservations;
 
-        public PlanningResult(List<Attribution> attributions, List<Reservation> reservationsNonAssignees) {
-            this.attributions = attributions;
-            this.reservationsNonAssignees = reservationsNonAssignees;
+        public PlanningResult(List<PlanningDTO> planningLines, List<PlanningDTO> unassignedReservations) {
+            this.planningLines = planningLines;
+            this.unassignedReservations = unassignedReservations;
         }
 
-        public List<Attribution> getAttributions() {
-            return attributions;
+        public List<PlanningDTO> getPlanningLines() {
+            return planningLines;
         }
 
-        public List<Reservation> getReservationsNonAssignees() {
-            return reservationsNonAssignees;
+        public List<PlanningDTO> getUnassignedReservations() {
+            return unassignedReservations;
         }
     }
 }
