@@ -1,7 +1,9 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
 <%@ page import="java.util.*" %>
-<%@ page import="dto.PlanningDTO" %>
+<%@ page import="model.Attribution" %>
+<%@ page import="model.Reservation" %>
 <%@ page import="java.time.format.DateTimeFormatter" %>
+<%@ page import="java.math.BigDecimal" %>
 <!DOCTYPE html>
 <html>
 <head>
@@ -157,6 +159,14 @@
         }
         .stat-green .number { color: #4CAF50; }
         .stat-red .number { color: #f44336; }
+        .stat-blue .number { color: #2196F3; }
+        .info-note {
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -166,12 +176,12 @@
         <%
             String selectedDate = (String) request.getAttribute("selectedDate");
             String error = (String) request.getAttribute("error");
-            List<PlanningDTO> planningLines = (List<PlanningDTO>) request.getAttribute("planningLines");
-            List<PlanningDTO> unassignedReservations = (List<PlanningDTO>) request.getAttribute("unassignedReservations");
+            List<Attribution> attributions = (List<Attribution>) request.getAttribute("attributions");
+            List<Reservation> reservationsNonAssignees = (List<Reservation>) request.getAttribute("reservationsNonAssignees");
             DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
-            int nbAssigned = (planningLines != null) ? planningLines.size() : 0;
-            int nbUnassigned = (unassignedReservations != null) ? unassignedReservations.size() : 0;
+            int nbAssigned = (attributions != null) ? attributions.size() : 0;
+            int nbUnassigned = (reservationsNonAssignees != null) ? reservationsNonAssignees.size() : 0;
         %>
 
         <% if (selectedDate != null) { %>
@@ -191,65 +201,78 @@
 
         <!-- Statistiques -->
         <div class="stats">
+            <div class="stat-box stat-blue">
+                <span class="number"><%= nbAssigned + nbUnassigned %></span>
+                <span class="label">Total réservations</span>
+            </div>
             <div class="stat-box stat-green">
                 <span class="number"><%= nbAssigned %></span>
-                <span class="label">Réservations assignées</span>
+                <span class="label">Attributions</span>
             </div>
             <div class="stat-box stat-red">
                 <span class="number"><%= nbUnassigned %></span>
-                <span class="label">Réservations non assignées</span>
+                <span class="label">Non assignées</span>
             </div>
         </div>
 
         <!-- ========================================== -->
-        <!-- TABLEAU PLANNING : RÉSERVATIONS ASSIGNÉES  -->
+        <!-- TABLEAU PLANNING : ATTRIBUTIONS            -->
         <!-- ========================================== -->
 
-        <h2>Planning des véhicules assignés</h2>
+        <h2>Attributions de véhicules</h2>
 
-        <% if (planningLines != null && !planningLines.isEmpty()) { %>
+        <% if (attributions != null && !attributions.isEmpty()) { %>
             <table>
                 <thead>
                     <tr>
                         <th>Véhicule</th>
                         <th>Réservation</th>
+                        <th>Lieu départ</th>
                         <th>Lieu destination</th>
+                        <th>Distance (A/R)</th>
                         <th>Heure départ</th>
                         <th>Heure retour</th>
                         <th>Statut</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <% for (PlanningDTO line : planningLines) { %>
+                    <% for (Attribution attr : attributions) { %>
                         <tr>
                             <td>
-                                <strong><%= line.getVehiculeReference() != null ? line.getVehiculeReference() : "-" %></strong>
+                                <strong><%= attr.getVehicule() != null ? attr.getVehicule().getReference() : "-" %></strong>
                                 <br>
-                                <small><%= line.getVehiculeNbPlace() != null ? line.getVehiculeNbPlace() + " places" : "" %>
-                                <%
-                                    String typeCarb = line.getVehiculeTypeCarburant();
-                                    if (typeCarb != null) {
-                                        String carbLabel = "";
-                                        switch(typeCarb) {
-                                            case "D": carbLabel = "Diesel"; break;
-                                            case "Es": carbLabel = "Essence"; break;
-                                            case "H": carbLabel = "Hybride"; break;
-                                            case "El": carbLabel = "Électrique"; break;
-                                            default: carbLabel = typeCarb;
-                                        }
-                                %>
-                                    - <%= carbLabel %>
-                                <% } %>
+                                <small>
+                                    <%= attr.getVehicule() != null ? attr.getVehicule().getNbPlace() + " places" : "" %>
+                                    <%
+                                        if (attr.getVehicule() != null && attr.getVehicule().getTypeCarburant() != null) {
+                                            String typeCarb = attr.getVehicule().getTypeCarburant().name();
+                                            String carbLabel = "";
+                                            switch(typeCarb) {
+                                                case "D": carbLabel = "Diesel"; break;
+                                                case "Es": carbLabel = "Essence"; break;
+                                                case "H": carbLabel = "Hybride"; break;
+                                                case "El": carbLabel = "Électrique"; break;
+                                                default: carbLabel = typeCarb;
+                                            }
+                                    %>
+                                        - <%= carbLabel %>
+                                    <% } %>
                                 </small>
                             </td>
                             <td>
-                                #<%= line.getReservationId() %> - <%= line.getCustomerId() %>
+                                #<%= attr.getReservation().getId() %> - <%= attr.getReservation().getCustomerId() %>
                                 <br>
-                                <small><%= line.getPassengerNbr() %> passager(s) - <%= line.getHotelName() != null ? line.getHotelName() : "" %></small>
+                                <small><%= attr.getReservation().getPassengerNbr() %> passager(s)</small>
                             </td>
-                            <td><%= line.getLieuLibelle() != null ? line.getLieuLibelle() : "-" %></td>
-                            <td><%= line.getHeureDepart() != null ? line.getHeureDepart().format(dtf) : "-" %></td>
-                            <td><%= line.getHeureRetour() != null ? line.getHeureRetour().format(dtf) : "-" %></td>
+                            <td><%= attr.getReservation().getLieuDepart() != null ? attr.getReservation().getLieuDepart().getLibelle() : "-" %></td>
+                            <td><%= attr.getReservation().getLieuDestination() != null ? attr.getReservation().getLieuDestination().getLibelle() : "-" %></td>
+                            <td>
+                                <%= attr.getDistanceKm() != null ? attr.getDistanceKm() + " km" : "-" %>
+                                <br>
+                                <small>(<%= attr.getDistanceAllerRetourKm() != null ? attr.getDistanceAllerRetourKm() + " km A/R" : "" %>)</small>
+                            </td>
+                            <td><%= attr.getDateHeureDepart() != null ? attr.getDateHeureDepart().format(dtf) : "-" %></td>
+                            <td><%= attr.getDateHeureRetour() != null ? attr.getDateHeureRetour().format(dtf) : "-" %></td>
                             <td><span class="badge badge-assigne">ASSIGNÉ</span></td>
                         </tr>
                     <% } %>
@@ -257,7 +280,7 @@
             </table>
         <% } else { %>
             <div class="empty-message">
-                <p>Aucune réservation assignée pour cette date.</p>
+                <p>Aucune attribution pour cette date.</p>
             </div>
         <% } %>
 
@@ -268,9 +291,9 @@
         <div class="section-unassigned">
             <h2>Réservations non assignées</h2>
 
-            <% if (unassignedReservations != null && !unassignedReservations.isEmpty()) { %>
+            <% if (reservationsNonAssignees != null && !reservationsNonAssignees.isEmpty()) { %>
                 <div class="alert alert-info">
-                    Ces réservations n'ont pas pu être assignées à un véhicule (aucun véhicule disponible avec assez de places ou conflit horaire).
+                    Ces réservations n'ont pas pu être assignées (aucun véhicule disponible, pas assez de places, conflit horaire ou distance manquante).
                 </div>
                 <table>
                     <thead>
@@ -278,21 +301,21 @@
                             <th>Réservation</th>
                             <th>Client</th>
                             <th>Nb passagers</th>
-                            <th>Hôtel</th>
+                            <th>Lieu départ</th>
                             <th>Lieu destination</th>
                             <th>Date arrivée</th>
                             <th>Statut</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <% for (PlanningDTO line : unassignedReservations) { %>
+                        <% for (Reservation resa : reservationsNonAssignees) { %>
                             <tr>
-                                <td>#<%= line.getReservationId() %></td>
-                                <td><%= line.getCustomerId() %></td>
-                                <td><%= line.getPassengerNbr() %></td>
-                                <td><%= line.getHotelName() != null ? line.getHotelName() : "-" %></td>
-                                <td><%= line.getLieuLibelle() != null ? line.getLieuLibelle() : "-" %></td>
-                                <td><%= line.getArrivalDate() != null ? line.getArrivalDate().format(dtf) : "-" %></td>
+                                <td>#<%= resa.getId() %></td>
+                                <td><%= resa.getCustomerId() %></td>
+                                <td><%= resa.getPassengerNbr() %></td>
+                                <td><%= resa.getLieuDepart() != null ? resa.getLieuDepart().getLibelle() : "-" %></td>
+                                <td><%= resa.getLieuDestination() != null ? resa.getLieuDestination().getLibelle() : "-" %></td>
+                                <td><%= resa.getArrivalDate() != null ? resa.getArrivalDate().format(dtf) : "-" %></td>
                                 <td><span class="badge badge-non-assigne">NON ASSIGNÉ</span></td>
                             </tr>
                         <% } %>

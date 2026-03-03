@@ -5,16 +5,11 @@ import java.time.LocalDateTime;
 public class Reservation {
     private Long id;
     private Lieu lieuDepart;
-    private String customerId;  // ← Changé de Integer à String
+    private String customerId;
     private Integer passengerNbr;
     private LocalDateTime arrivalDate;
     private LocalDateTime createdAt;
     private Lieu lieuDestination;
-    private Vehicule vehicule;
-    private String statut;
-    private LocalDateTime heureDepart;
-    private LocalDateTime heureArrivee;
-    private LocalDateTime heureRetour;
 
     public Reservation() {}
 
@@ -26,18 +21,12 @@ public class Reservation {
     }
 
     public Reservation(Lieu lieuDepart, String customerId, Integer passengerNbr, LocalDateTime arrivalDate,
-                       Lieu lieuDestination, Vehicule vehicule, String statut,
-                       LocalDateTime heureDepart, LocalDateTime heureArrivee, LocalDateTime heureRetour) {
+                       Lieu lieuDestination) {
         this.lieuDepart = lieuDepart;
         this.customerId = customerId;
         this.passengerNbr = passengerNbr;
         this.arrivalDate = arrivalDate;
         this.lieuDestination = lieuDestination;
-        this.vehicule = vehicule;
-        this.statut = statut;
-        this.heureDepart = heureDepart;
-        this.heureArrivee = heureArrivee;
-        this.heureRetour = heureRetour;
     }
 
     // Getters & Setters
@@ -106,45 +95,5 @@ public class Reservation {
 
     public void setLieuDestination(Lieu lieuDestination) {
         this.lieuDestination = lieuDestination;
-    }
-
-    public Vehicule getVehicule() {
-        return vehicule;
-    }
-
-    public void setVehicule(Vehicule vehicule) {
-        this.vehicule = vehicule;
-    }
-
-    public String getStatut() {
-        return statut;
-    }
-
-    public void setStatut(String statut) {
-        this.statut = statut;
-    }
-
-    public LocalDateTime getHeureDepart() {
-        return heureDepart;
-    }
-
-    public void setHeureDepart(LocalDateTime heureDepart) {
-        this.heureDepart = heureDepart;
-    }
-
-    public LocalDateTime getHeureArrivee() {
-        return heureArrivee;
-    }
-
-    public void setHeureArrivee(LocalDateTime heureArrivee) {
-        this.heureArrivee = heureArrivee;
-    }
-
-    public LocalDateTime getHeureRetour() {
-        return heureRetour;
-    }
-
-    public void setHeureRetour(LocalDateTime heureRetour) {
-        this.heureRetour = heureRetour;
     }
 }
