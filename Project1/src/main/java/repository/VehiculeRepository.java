@@ -5,7 +5,6 @@ import model.Vehicule;
 import model.TypeCarburant;
 
 import java.sql.*;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -159,32 +158,20 @@ public class VehiculeRepository {
     }
 
     /**
-     * Trouver les véhicules disponibles pour une réservation à une date donnée.
-     * Un véhicule est disponible si :
-     *   - nb_places >= passengerNbr
-     *   - Il n'a aucune réservation assignée dont heure_retour > heureDepart de la nouvelle réservation
-     *     pour la même date (pas de conflit de planning)
+     * Trouver les véhicules avec assez de places pour un nombre de passagers donné.
+     * Le filtrage de disponibilité (conflits horaires) est géré en mémoire par PlanningService.
      */
-    public List<Vehicule> findAvailableVehicules(int passengerNbr, LocalDateTime heureDepart) throws SQLException {
+    public List<Vehicule> findAvailableVehicules(int passengerNbr) throws SQLException {
         List<Vehicule> vehicules = new ArrayList<>();
         String sql = "SELECT v.id, v.reference, v.nb_place, v.type_carburant " +
                      "FROM vehicule v " +
                      "WHERE v.nb_place >= ? " +
-                     "AND v.id NOT IN ( " +
-                     "    SELECT r.vehicule_id FROM reservation r " +
-                     "    WHERE r.vehicule_id IS NOT NULL " +
-                     "    AND r.statut = 'ASSIGNE' " +
-                     "    AND r.heure_retour > ? " +
-                     "    AND DATE(r.heure_depart) = DATE(?) " +
-                     ") " +
                      "ORDER BY v.nb_place ASC, v.type_carburant ASC";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setInt(1, passengerNbr);
-            stmt.setTimestamp(2, Timestamp.valueOf(heureDepart));
-            stmt.setTimestamp(3, Timestamp.valueOf(heureDepart));
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
