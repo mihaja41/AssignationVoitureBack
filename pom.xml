@@ -118,7 +118,6 @@
     <!--  BUILD                    -->
     <!-- ========================= -->
     <build>
-        <sourceDirectory>Project1/src/main/java</sourceDirectory>
         <finalName>assignation-voiture</finalName>
 
         <plugins>
@@ -134,56 +133,27 @@
                 </configuration>
             </plugin>
 
-            <!-- Copier les dépendances Maven dans WEB-INF/lib -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.6.1</version>
-                <executions>
-                    <execution>
-                        <phase>prepare-package</phase>
-                        <goals>
-                            <goal>copy-dependencies</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${project.build.directory}/${project.build.finalName}/WEB-INF/lib</outputDirectory>
-                            <excludeScope>provided</excludeScope>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <!-- Copier les JARs locaux du framework -->
+            <!-- Copier project1.war existant et le renommer -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <version>3.1.0</version>
                 <executions>
                     <execution>
-                        <phase>prepare-package</phase>
+                        <phase>package</phase>
                         <goals>
                             <goal>run</goal>
                         </goals>
                         <configuration>
                             <target>
-                                <mkdir dir="${project.build.directory}/${project.build.finalName}/WEB-INF/lib"/>
-                                <copy todir="${project.build.directory}/${project.build.finalName}/WEB-INF/lib">
-                                    <fileset dir="Project1/lib" includes="*.jar"/>
-                                </copy>
+                                <copy file="Project1/build/project1.war" 
+                                      tofile="${project.build.directory}/assignation-voiture.war"
+                                      failonerror="false"/>
+                                <echo message="✓ WAR copied: ${project.build.directory}/assignation-voiture.war"/>
                             </target>
                         </configuration>
                     </execution>
                 </executions>
-            </plugin>
-
-            <!-- WAR Plugin -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-war-plugin</artifactId>
-                <version>3.4.0</version>
-                <configuration>
-                    <webappDirectory>Project1/src/main/webapp</webappDirectory>
-                </configuration>
             </plugin>
 
         </plugins>
