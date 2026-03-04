@@ -1,5 +1,24 @@
 -- psql -U postgres -d postgres -f /home/anita/Documents/itu_lesson/S5/FRAME_WORK/Project/AssignationVoitureBack/Project1/sql/reinit.sql
 
+
+-- ==========================================
+-- SCRIPT DE RÉINITIALISATION COMPLET
+-- Base de données: hotel_reservation (PostgreSQL)
+-- Sprint 3 - Planification & Attribution Véhicules
+-- Date: 2026-03-01
+-- ==========================================
+
+-- ⚠️ ATTENTION : Ce script supprime et recrée TOUTE la base de données.
+-- Utiliser uniquement pour les tests / démonstrations.
+-- Exécuter en tant que superuser PostgreSQL (ex: postgres).
+-- ⚠️ IMPORTANT : Exécuter ce script depuis la base "postgres" et non "hotel_reservation"
+--   psql -U postgres -d postgres -f reinit.sql
+
+-- ==========================================
+-- 0. DROP & CREATE DATABASE
+-- ==========================================
+-- psql -U postgres -d postgres -f /home/anita/Documents/itu_lesson/S5/FRAME_WORK/Project/AssignationVoitureBack/Project1/sql/reinit.sql
+
 -- Fermer toutes les connexions actives à la base
 SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'hotel_reservation' AND pid <> pg_backend_pid();
 
@@ -14,6 +33,7 @@ CREATE DATABASE hotel_reservation;
 -- ==========================================
 
 
+DROP TABLE IF EXISTS trajet CASCADE;
 DROP TABLE IF EXISTS distance CASCADE;
 DROP TABLE IF EXISTS reservation CASCADE;
 DROP TABLE IF EXISTS vehicule CASCADE;
@@ -64,7 +84,7 @@ CREATE TABLE vehicule (
     type_carburant type_carburant_enum NOT NULL
 );
 
--- Table RESERVATION (simplifiée : l'attribution véhicule est calculée en mémoire par le PlanningService)
+-- Table RESERVATION (simplifiée : l'assignation est gérée par la table TRAJET)
 CREATE TABLE reservation (
     id BIGSERIAL PRIMARY KEY,
     lieu_depart_id BIGINT NOT NULL REFERENCES lieu(id) ON DELETE CASCADE,
@@ -82,6 +102,19 @@ CREATE TABLE parameters (
     value TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Table TRAJET (résultat du planning : assignation véhicule ↔ réservation)
+-- Les distances ne sont PAS stockées ici car elles existent déjà dans la table DISTANCE.
+-- Elles sont calculées à la volée via DistanceRepository.findByFromAndTo(lieuDepart, lieuDestination).
+CREATE TABLE trajet (
+    id BIGSERIAL PRIMARY KEY,
+    vehicule_id BIGINT NOT NULL REFERENCES vehicule(id) ON DELETE CASCADE,
+    reservation_id BIGINT NOT NULL REFERENCES reservation(id) ON DELETE CASCADE,
+    date_heure_depart TIMESTAMP NOT NULL,
+    date_heure_retour TIMESTAMP NOT NULL,
+    statut VARCHAR(50) DEFAULT 'ASSIGNE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table DISTANCE (distances entre lieux)
@@ -103,6 +136,10 @@ CREATE INDEX idx_reservation_lieu_depart ON reservation(lieu_depart_id);
 CREATE INDEX idx_reservation_arrival_date ON reservation(arrival_date);
 CREATE INDEX idx_lieu_code ON lieu(code);
 CREATE INDEX idx_distance_from_to ON distance(from_lieu_id, to_lieu_id);
+CREATE INDEX idx_trajet_vehicule ON trajet(vehicule_id);
+CREATE INDEX idx_trajet_reservation ON trajet(reservation_id);
+CREATE INDEX idx_trajet_depart ON trajet(date_heure_depart);
+CREATE INDEX idx_trajet_retour ON trajet(date_heure_retour);
 
 -- ==========================================
 -- 5. DONNÉES DE TEST
@@ -120,15 +157,17 @@ INSERT INTO lieu (code, libelle) VALUES
 ('SAMBAVA', 'Sambava Airport');
 
 -- 5.2 Distances entre lieux (km)
--- UNE SEULE ENTRÉE par paire de lieux (pas de doublon A→B / B→A)
--- La distance est la même dans les deux sens.
--- Le code Java cherche dans les deux sens automatiquement.
 INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
-(1, 4, 35.50),    -- Colbert ↔ Ivato
-(1, 5, 250.00),   -- Colbert ↔ Nosy Be
-(1, 6, 180.00),   -- Colbert ↔ Sainte-Marie
-(4, 5, 285.00),   -- Ivato ↔ Nosy Be
-(4, 6, 200.00);   -- Ivato ↔ Sainte-Marie
+(1, 4, 35.50),    -- Colbert -> Ivato
+(4, 1, 35.50),    -- Ivato -> Colbert
+(1, 5, 250.00),   -- Colbert -> Nosy Be
+(5, 1, 250.00),   -- Nosy Be -> Colbert
+(1, 6, 180.00),   -- Colbert -> Sainte-Marie
+(6, 1, 180.00),   -- Sainte-Marie -> Colbert
+(4, 5, 285.00),   -- Ivato -> Nosy Be
+(5, 4, 285.00),   -- Nosy Be -> Ivato
+(4, 6, 200.00),   -- Ivato -> Sainte-Marie
+(6, 4, 200.00);   -- Sainte-Marie -> Ivato
 
 -- 5.3 Véhicules (5 véhicules avec différents carburants et capacités)
 INSERT INTO vehicule (reference, nb_place, type_carburant) VALUES
@@ -143,6 +182,9 @@ INSERT INTO parameters (key, value) VALUES
 ('vitesse_moyenne', '30'),    -- 30 km/h
 ('temps_attente', '30');      -- 30 minutes
 
+-- 5.5 Réservations de test (simplifiées : plus de vehicule_id, statut, heures)
+-- Les horaires sont calculés automatiquement par le PlanningService
+-- via : distance aller-retour / vitesse_moyenne + temps_attente
 
 -- ======================================================================
 -- DATE: 2026-03-15 → Plusieurs réservations pour tester l'algorithme
@@ -201,11 +243,25 @@ INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_dat
 -- (pour que toutes les réservations aient une distance)
 -- ==========================================
 
+-- Carlton → Ivato et retour
 INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
-(2, 4, 30.00),    -- Carlton ↔ Ivato
-(3, 4, 28.00),    -- Ibis ↔ Ivato
-(2, 5, 260.00),   -- Carlton ↔ Nosy Be
-(3, 5, 255.00);   -- Ibis ↔ Nosy Be
+(2, 4, 30.00),    -- Carlton -> Ivato
+(4, 2, 30.00);    -- Ivato -> Carlton
+
+-- Ibis → Ivato et retour
+INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
+(3, 4, 28.00),    -- Ibis -> Ivato
+(4, 3, 28.00);    -- Ivato -> Ibis
+
+-- Carlton → Nosy Be et retour
+INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
+(2, 5, 260.00),   -- Carlton -> Nosy Be
+(5, 2, 260.00);   -- Nosy Be -> Carlton
+
+-- Ibis → Nosy Be et retour
+INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
+(3, 5, 255.00),   -- Ibis -> Nosy Be
+(5, 3, 255.00);   -- Nosy Be -> Ibis
 
 -- ==========================================
 -- 7. VÉRIFICATION
@@ -219,15 +275,6 @@ SELECT 'Véhicules', COUNT(*) FROM vehicule
 UNION ALL
 SELECT 'Paramètres', COUNT(*) FROM parameters
 UNION ALL
-SELECT 'Réservations ASSIGNE', COUNT(*) FROM reservation WHERE statut = 'ASSIGNE'
+SELECT 'Réservations (total)', COUNT(*) FROM reservation
 UNION ALL
-SELECT 'Réservations NON_ASSIGNE', COUNT(*) FROM reservation WHERE statut = 'NON_ASSIGNE';
-
-
-SELECT 'Réservations (total)', COUNT(*) FROM reservation;
-
-
---   \c postgres
---   drop database hotel_reservation ;
---   create database hotel_reservation  ; 
---   \c hotel_reservation 
+SELECT 'Trajets', COUNT(*) FROM trajet;

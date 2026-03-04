@@ -11,7 +11,9 @@ import java.util.List;
 public class DistanceRepository {
 
     /**
-     * Trouver la distance entre deux lieux
+     * Trouver la distance entre deux lieux.
+     * Cherche dans les deux sens : (A → B) ou (B → A).
+     * Une seule entrée est stockée par paire de lieux.
      */
     public Distance findByFromAndTo(Long fromLieuId, Long toLieuId) throws SQLException {
         String sql = "SELECT d.id, d.km_distance, d.created_at, " +
@@ -20,13 +22,16 @@ public class DistanceRepository {
                      "FROM distance d " +
                      "JOIN lieu f ON d.from_lieu_id = f.id " +
                      "JOIN lieu t ON d.to_lieu_id = t.id " +
-                     "WHERE d.from_lieu_id = ? AND d.to_lieu_id = ?";
+                     "WHERE (d.from_lieu_id = ? AND d.to_lieu_id = ?) " +
+                     "   OR (d.from_lieu_id = ? AND d.to_lieu_id = ?)";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setLong(1, fromLieuId);
             stmt.setLong(2, toLieuId);
+            stmt.setLong(3, toLieuId);
+            stmt.setLong(4, fromLieuId);
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
