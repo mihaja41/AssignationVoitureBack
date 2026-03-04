@@ -83,17 +83,47 @@
             <version>${postgres.version}</version>
         </dependency>
 
+        <!-- Framework local -->
+        <dependency>
+            <groupId>com.framework</groupId>
+            <artifactId>fw</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${basedir}/Project1/lib/fw.jar</systemPath>
+        </dependency>
+
+        <!-- GSON -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.13.2</version>
+        </dependency>
+
+        <!-- Commons -->
+        <dependency>
+            <groupId>commons-beanutils</groupId>
+            <artifactId>commons-beanutils</artifactId>
+            <version>1.9.4</version>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+            <version>1.2</version>
+        </dependency>
+
     </dependencies>
 
     <!-- ========================= -->
     <!--  BUILD                    -->
     <!-- ========================= -->
     <build>
+        <sourceDirectory>Project1/src/main/java</sourceDirectory>
         <finalName>assignation-voiture</finalName>
 
         <plugins>
 
-            <!-- Compilation Java 21 -->
+            <!-- Compilation Java 17 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -104,18 +134,13 @@
                 </configuration>
             </plugin>
 
-            <!-- JAR executable -->
+            <!-- WAR Plugin -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>3.3.0</version>
+                <artifactId>maven-war-plugin</artifactId>
+                <version>3.4.0</version>
                 <configuration>
-                    <archive>
-                        <manifest>
-                            <!-- A MODIFIER avec ta classe Main -->
-                           <mainClass>com.gestion.assignationvoiture.Application</mainClass>
-                        </manifest>
-                    </archive>
+                    <webappDirectory>Project1/src/main/webapp</webappDirectory>
                 </configuration>
             </plugin>
 
