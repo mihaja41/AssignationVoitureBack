@@ -157,7 +157,6 @@
                         </goals>
                         <configuration>
                             <outputDirectory>${project.build.directory}/${project.build.finalName}/WEB-INF/lib</outputDirectory>
-                            <includeScope>compile</includeScope>
                         </configuration>
                     </execution>
                 </executions>
