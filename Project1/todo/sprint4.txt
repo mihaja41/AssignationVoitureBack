@@ -1,0 +1,126 @@
+TL: ETU003255
+# SPRINT 4 – REGROUPEMENT D’ASSIGNATION
+
+OBJECTIF :
+Rechercher et assigner les véhicules disponibles
+pour les réservations d’une date donnée.
+
+---
+
+1. RECUPERER LES RESERVATIONS
+
+---
+
+* Prendre toutes les réservations d’une date donnée
+* Garder uniquement celles NON ASSIGNEES
+* Trier par nombre de passagers (ordre décroissant)
+
+---
+
+2. ASSIGNATION DU VEHICULE
+
+---
+
+Pour chaque réservation (en commençant par la plus grande) :
+
+A. Chercher les véhicules candidats :
+- nb_places >= reservation.passengerNbr
+
+B. Vérifier disponibilité :
+- Exclure véhicule si :
+heure_retour > heure_depart de la réservation
+(évite double assignation / conflit planning)
+
+C. Choisir le meilleur véhicule :
+
+```
+1. Prendre celui avec :
+   (nb_places - passengerNbr) le plus petit
+   → minimiser les places vides
+
+2. Si plusieurs véhicules ont le même nombre
+   de places le plus proche :
+   → choisir celui en diesel ('D')
+
+3. Si encore égalité (même places + même carburant) :
+   → choisir au random
+```
+
+---
+
+3. REGROUPEMENT DANS LE MEME VEHICULE
+
+---
+
+Après assignation d’une réservation :
+
+* Calculer :
+  placeRestante = nb_places - totalPassagersDansVehicule
+
+* Si placeRestante >= 1 :
+
+  Chercher autres réservations compatibles :
+  • même date
+  • même heure de départ
+  • même lieu de départ
+  • passengerNbr <= placeRestante
+  • NON ASSIGNEES
+
+  Les assigner au même véhicule
+  Recalculer placeRestante
+  Répéter jusqu’à ce qu’il n’y ait plus de place
+
+* Sinon :
+  Passer à la réservation suivante
+
+---
+
+## REGLE IMPORTANTE
+
+On ne peut regrouper dans le même véhicule
+que les réservations ayant :
+
+```
+• même date
+• même heure de départ
+• même lieu de départ
+```
+
+---
+
+4. CALCUL DATE HEURE RETOUR
+
+---
+
+ORDRE DE RAMASSAGE :
+
+1. Client le plus proche du lieu de départ
+2. Clients à distance moyenne
+3. Client le plus éloigné
+
+CALCUL :
+
+* Calculer distance totale ALLER
+  (selon l’ordre de ramassage)
+
+* Ajouter distance RETOUR
+
+* DistanceTotale = aller + retour
+
+* TempsTrajet =
+  distanceTotale / vitesseMoyenne
+
+* dateHeureRetour =
+  dateHeureDepart + TempsTrajet
+
+---
+
+## RESULTAT ATTENDU
+
+* Pas de double assignation
+* Optimisation des places
+* Priorité au diesel en cas d’égalité
+* Random si égalité complète
+* dateHeureRetour correctement calculée
+
+FIN SPRINT 4
