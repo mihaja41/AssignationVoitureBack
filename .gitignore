@@ -17,3 +17,6 @@ Thumbs.db
 
 # ===== Environnements =====
 .env
+/target
+/targets
+Project1/build

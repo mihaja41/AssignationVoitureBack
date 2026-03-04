@@ -219,4 +219,15 @@ SELECT 'Véhicules', COUNT(*) FROM vehicule
 UNION ALL
 SELECT 'Paramètres', COUNT(*) FROM parameters
 UNION ALL
+SELECT 'Réservations ASSIGNE', COUNT(*) FROM reservation WHERE statut = 'ASSIGNE'
+UNION ALL
+SELECT 'Réservations NON_ASSIGNE', COUNT(*) FROM reservation WHERE statut = 'NON_ASSIGNE';
+
+
 SELECT 'Réservations (total)', COUNT(*) FROM reservation;
+
+
+--   \c postgres
+--   drop database hotel_reservation ;
+--   create database hotel_reservation  ; 
+--   \c hotel_reservation 
