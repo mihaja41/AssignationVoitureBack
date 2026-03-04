@@ -1,45 +1,50 @@
-TL: ETU003255
 # SPRINT 4 – REGROUPEMENT D’ASSIGNATION
 
+TL :ETU003255 
+DEV1 : ETU003240
+DEV2 : ETU003283
+
+
 OBJECTIF :
-Rechercher et assigner les véhicules disponibles
-pour les réservations d’une date donnée.
+Rechercher et assigner les véhicules disponibles pour les réservations d’une date donnée.
+
+NB :
+Le lieu de départ est TOUJOURS l’aéroport.
+Il s’agit d’un RACCOMPAGNEMENT des clients depuis l’aéroport vers leurs destinations.
 
 ---
 
-1. RECUPERER LES RESERVATIONS
+## DEV 1 – REGROUPEMENT ET ASSIGNATION DES VEHICULES
 
----
+### 1. RECUPERATION DES RESERVATIONS
 
 * Prendre toutes les réservations d’une date donnée
-* Garder uniquement celles NON ASSIGNEES
 * Trier par nombre de passagers (ordre décroissant)
+* Traiter en premier la réservation avec le plus grand nombre de passagers
 
 ---
 
-2. ASSIGNATION DU VEHICULE
+### 2. RECHERCHE DU VEHICULE
 
----
+Pour chaque réservation :
 
-Pour chaque réservation (en commençant par la plus grande) :
+A. Véhicules candidats :
 
-A. Chercher les véhicules candidats :
-- nb_places >= reservation.passengerNbr
+* nb_places >= reservation.passengerNbr
 
-B. Vérifier disponibilité :
-- Exclure véhicule si :
-heure_retour > heure_depart de la réservation
-(évite double assignation / conflit planning)
+B. Vérification de disponibilité :
 
-C. Choisir le meilleur véhicule :
+* Exclure véhicule si : heure_retour > heure_depart de la réservation
+  (évite double assignation / conflit planning)
+
+C. Choix du véhicule :
 
 ```
-1. Prendre celui avec :
+1. Choisir celui avec :
    (nb_places - passengerNbr) le plus petit
    → minimiser les places vides
 
-2. Si plusieurs véhicules ont le même nombre
-   de places le plus proche :
+2. Si plusieurs véhicules ont le même écart :
    → choisir celui en diesel ('D')
 
 3. Si encore égalité (même places + même carburant) :
@@ -48,70 +53,63 @@ C. Choisir le meilleur véhicule :
 
 ---
 
-3. REGROUPEMENT DANS LE MEME VEHICULE
+### 3. REGROUPEMENT DANS LE MEME VEHICULE
 
----
+Après assignation :
 
-Après assignation d’une réservation :
-
-* Calculer :
-  placeRestante = nb_places - totalPassagersDansVehicule
+* Calculer : placeRestante = nb_places - totalPassagersDansVehicule
 
 * Si placeRestante >= 1 :
 
   Chercher autres réservations compatibles :
   • même date
   • même heure de départ
-  • même lieu de départ
+  • même aéroport (lieu de départ)
   • passengerNbr <= placeRestante
-  • NON ASSIGNEES
+  • non encore assignées
 
   Les assigner au même véhicule
   Recalculer placeRestante
   Répéter jusqu’à ce qu’il n’y ait plus de place
 
-* Sinon :
-  Passer à la réservation suivante
+* Sinon : passer à la réservation suivante non assignée
 
 ---
 
-## REGLE IMPORTANTE
+## DEV 2 – CALCUL DATE HEURE RETOUR
 
-On ne peut regrouper dans le même véhicule
-que les réservations ayant :
+Contexte :
+Le véhicule part de l’aéroport et dépose les clients à leurs destinations.
 
-```
-• même date
-• même heure de départ
-• même lieu de départ
-```
+### A. TRI DES DESTINATIONS
 
----
-
-4. CALCUL DATE HEURE RETOUR
+* Trier par ordre croissant les distances entre :
+  l’aéroport et chaque lieu de destination des clients
+* Si deux destinations ont la même distance :
+  → trier par ordre alphabétique croissant du libellé du lieu de destination
 
 ---
 
-ORDRE DE RAMASSAGE :
+### B. ORDRE DE DEPOSE
 
-1. Client le plus proche du lieu de départ
-2. Clients à distance moyenne
-3. Client le plus éloigné
+* Déposer d’abord le client le plus proche de l’aéroport
+* Continuer progressivement vers le plus éloigné
+* Le dernier client déposé est celui le plus loin
 
-CALCUL :
+---
 
-* Calculer distance totale ALLER
-  (selon l’ordre de ramassage)
+### C. CALCUL DISTANCE
 
-* Ajouter distance RETOUR
-
+* Distance ALLER : Somme des distances selon l’ordre de dépose
+* Distance RETOUR : Distance entre la dernière destination et l’aéroport
 * DistanceTotale = aller + retour
 
-* TempsTrajet =
-  distanceTotale / vitesseMoyenne
+---
 
-* dateHeureRetour =
-  dateHeureDepart + TempsTrajet
+### D. CALCUL TEMPS
+
+* TempsTrajet = DistanceTotale / VitesseMoyenneVehicule
+* dateHeureRetour = dateHeureDepart + TempsTrajet
 
 ---
 
@@ -119,8 +117,7 @@ CALCUL :
 
 * Pas de double assignation
 * Optimisation des places
-* Priorité au diesel en cas d’égalité
+* Priorité diesel en cas d’égalité
 * Random si égalité complète
+* Optimisation du trajet de dépose
 * dateHeureRetour correctement calculée
-
-FIN SPRINT 4
