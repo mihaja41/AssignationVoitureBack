@@ -180,8 +180,14 @@
             List<Reservation> reservationsNonAssignees = (List<Reservation>) request.getAttribute("reservationsNonAssignees");
             DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
-            int nbAssigned = (attributions != null) ? attributions.size() : 0;
+            int nbAssigned = 0;
+            if (attributions != null) {
+                for (Attribution a : attributions) {
+                    nbAssigned += a.getReservations().size();
+                }
+            }
             int nbUnassigned = (reservationsNonAssignees != null) ? reservationsNonAssignees.size() : 0;
+            int nbGroupes = (attributions != null) ? attributions.size() : 0;
         %>
 
         <% if (selectedDate != null) { %>
@@ -207,11 +213,15 @@
             </div>
             <div class="stat-box stat-green">
                 <span class="number"><%= nbAssigned %></span>
-                <span class="label">Attributions</span>
+                <span class="label">Réservations assignées</span>
             </div>
             <div class="stat-box stat-red">
                 <span class="number"><%= nbUnassigned %></span>
                 <span class="label">Non assignées</span>
+            </div>
+            <div class="stat-box" style="border-color: #9C27B0;">
+                <span class="number" style="color: #9C27B0;"><%= nbGroupes %></span>
+                <span class="label">Véhicules utilisés</span>
             </div>
         </div>
 
@@ -226,17 +236,21 @@
                 <thead>
                     <tr>
                         <th>Véhicule</th>
-                        <th>Réservation</th>
+                        <th>Réservation(s)</th>
                         <th>Lieu départ</th>
-                        <th>Lieu destination</th>
-                        <th>Distance (A/R)</th>
+                        <th>Lieu(x) destination</th>
+                        <th>Passagers</th>
                         <th>Heure départ</th>
                         <th>Heure retour</th>
                         <th>Statut</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <% for (Attribution attr : attributions) { %>
+                    <% for (Attribution attr : attributions) {
+                        List<Reservation> grouped = attr.getReservations();
+                        int totalPass = attr.getTotalPassengers();
+                        int placesRestantes = attr.getPlacesRestantes();
+                    %>
                         <tr>
                             <td>
                                 <strong><%= attr.getVehicule() != null ? attr.getVehicule().getReference() : "-" %></strong>
@@ -260,16 +274,34 @@
                                 </small>
                             </td>
                             <td>
-                                #<%= attr.getReservation().getId() %> - <%= attr.getReservation().getCustomerId() %>
-                                <br>
-                                <small><%= attr.getReservation().getPassengerNbr() %> passager(s)</small>
+                                <% for (int i = 0; i < grouped.size(); i++) {
+                                    Reservation r = grouped.get(i);
+                                %>
+                                    #<%= r.getId() %> - <%= r.getCustomerId() %>
+                                    (<%= r.getPassengerNbr() %> pass.)
+                                    <% if (i < grouped.size() - 1) { %><br><% } %>
+                                <% } %>
+                                <% if (grouped.size() > 1) { %>
+                                    <br><small style="color: #9C27B0; font-weight: bold;">
+                                        ⇒ <%= grouped.size() %> réservations regroupées
+                                    </small>
+                                <% } %>
                             </td>
                             <td><%= attr.getReservation().getLieuDepart() != null ? attr.getReservation().getLieuDepart().getLibelle() : "-" %></td>
-                            <td><%= attr.getReservation().getLieuDestination() != null ? attr.getReservation().getLieuDestination().getLibelle() : "-" %></td>
                             <td>
-                                <%= attr.getDistanceKm() != null ? attr.getDistanceKm() + " km" : "-" %>
+                                <% for (int i = 0; i < grouped.size(); i++) {
+                                    Reservation r = grouped.get(i);
+                                %>
+                                    <%= r.getLieuDestination() != null ? r.getLieuDestination().getLibelle() : "-" %>
+                                    <% if (i < grouped.size() - 1) { %><br><% } %>
+                                <% } %>
+                            </td>
+                            <td>
+                                <strong><%= totalPass %></strong> / <%= attr.getVehicule() != null ? attr.getVehicule().getNbPlace() : "?" %>
                                 <br>
-                                <small>(<%= attr.getDistanceAllerRetourKm() != null ? attr.getDistanceAllerRetourKm() + " km A/R" : "" %>)</small>
+                                <small style="color: <%= placesRestantes > 0 ? "#4CAF50" : "#f44336" %>;">
+                                    <%= placesRestantes %> place(s) restante(s)
+                                </small>
                             </td>
                             <td><%= attr.getDateHeureDepart() != null ? attr.getDateHeureDepart().format(dtf) : "-" %></td>
                             <td><%= attr.getDateHeureRetour() != null ? attr.getDateHeureRetour().format(dtf) : "-" %></td>

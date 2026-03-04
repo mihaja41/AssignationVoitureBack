@@ -121,3 +121,4 @@ Le véhicule part de l’aéroport et dépose les clients à leurs destinations.
 * Random si égalité complète
 * Optimisation du trajet de dépose
 * dateHeureRetour correctement calculée
+
