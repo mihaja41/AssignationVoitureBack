@@ -1,1 +1,1 @@
-web: java $JAVA_OPTS -Dserver.port=$PORT -jar targets/assignation-voiture.war
+web: java $JAVA_OPTS -Dserver.port=$PORT -jar target/assignation-voiture.war

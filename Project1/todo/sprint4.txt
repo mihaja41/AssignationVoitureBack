@@ -1,0 +1,124 @@
+# SPRINT 4 – REGROUPEMENT D’ASSIGNATION
+
+TL :ETU003255 
+DEV1 : ETU003240
+DEV2 : ETU003283
+
+
+OBJECTIF :
+Rechercher et assigner les véhicules disponibles pour les réservations d’une date donnée.
+
+NB :
+Le lieu de départ est TOUJOURS l’aéroport.
+Il s’agit d’un RACCOMPAGNEMENT des clients depuis l’aéroport vers leurs destinations.
+
+---
+
+## DEV 1 – REGROUPEMENT ET ASSIGNATION DES VEHICULES
+
+### 1. RECUPERATION DES RESERVATIONS
+
+* Prendre toutes les réservations d’une date donnée
+* Trier par nombre de passagers (ordre décroissant)
+* Traiter en premier la réservation avec le plus grand nombre de passagers
+
+---
+
+### 2. RECHERCHE DU VEHICULE
+
+Pour chaque réservation :
+
+A. Véhicules candidats :
+
+* nb_places >= reservation.passengerNbr
+
+B. Vérification de disponibilité :
+
+* Exclure véhicule si : heure_retour > heure_depart de la réservation
+  (évite double assignation / conflit planning)
+
+C. Choix du véhicule :
+
+```
+1. Choisir celui avec :
+   (nb_places - passengerNbr) le plus petit
+   → minimiser les places vides
+
+2. Si plusieurs véhicules ont le même écart :
+   → choisir celui en diesel ('D')
+
+3. Si encore égalité (même places + même carburant) :
+   → choisir au random
+```
+
+---
+
+### 3. REGROUPEMENT DANS LE MEME VEHICULE
+
+Après assignation :
+
+* Calculer : placeRestante = nb_places - totalPassagersDansVehicule
+
+* Si placeRestante >= 1 :
+
+  Chercher autres réservations compatibles :
+  • même date
+  • même heure de départ
+  • même aéroport (lieu de départ)
+  • passengerNbr <= placeRestante
+  • non encore assignées
+
+  Les assigner au même véhicule
+  Recalculer placeRestante
+  Répéter jusqu’à ce qu’il n’y ait plus de place
+
+* Sinon : passer à la réservation suivante non assignée
+
+---
+
+## DEV 2 – CALCUL DATE HEURE RETOUR
+
+Contexte :
+Le véhicule part de l’aéroport et dépose les clients à leurs destinations.
+
+### A. TRI DES DESTINATIONS
+
+* Trier par ordre croissant les distances entre :
+  l’aéroport et chaque lieu de destination des clients
+* Si deux destinations ont la même distance :
+  → trier par ordre alphabétique croissant du libellé du lieu de destination
+
+---
+
+### B. ORDRE DE DEPOSE
+
+* Déposer d’abord le client le plus proche de l’aéroport
+* Continuer progressivement vers le plus éloigné
+* Le dernier client déposé est celui le plus loin
+
+---
+
+### C. CALCUL DISTANCE
+
+* Distance ALLER : Somme des distances selon l’ordre de dépose
+* Distance RETOUR : Distance entre la dernière destination et l’aéroport
+* DistanceTotale = aller + retour
+
+---
+
+### D. CALCUL TEMPS
+
+* TempsTrajet = DistanceTotale / VitesseMoyenneVehicule
+* dateHeureRetour = dateHeureDepart + TempsTrajet
+
+---
+
+## RESULTAT ATTENDU
+
+* Pas de double assignation
+* Optimisation des places
+* Priorité diesel en cas d’égalité
+* Random si égalité complète
+* Optimisation du trajet de dépose
+* dateHeureRetour correctement calculée
+
