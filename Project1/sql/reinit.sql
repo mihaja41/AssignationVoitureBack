@@ -134,7 +134,7 @@ INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
 INSERT INTO vehicule (reference, nb_place, type_carburant) VALUES
 ('AV-001', 4, 'D'),    -- Diesel, 4 places
 ('AV-002', 4, 'Es'),   -- Essence, 4 places
-('AV-003', 7, 'D'),    -- Diesel, 7 places
+('AV-003', 12, 'D'),    -- Diesel, 7 places
 ('AV-004', 5, 'El'),   -- Électrique, 5 places
 ('AV-005', 8, 'D');     -- Diesel, 8 places
 
@@ -149,44 +149,31 @@ INSERT INTO parameters (key, value) VALUES
 -- ======================================================================
 
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(1, 'CLI001', 4, '2026-03-15 14:00:00', 4);
+(4, 'CLI001', 4, '2026-03-15 16:00:00', 1);
 
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(2, 'CLI002', 3, '2026-03-15 16:00:00', 5);
+(4, 'CLI002', 3, '2026-03-15 16:00:00', 2);
 
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(1, 'CLI003', 6, '2026-03-15 09:00:00', 6);
+(4, 'CLI003', 6, '2026-03-15 09:00:00', 3);
 
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(3, 'CLI004', 2, '2026-03-15 14:00:00', 4);
-
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(1, 'CLI005', 10, '2026-03-15 11:00:00', 5);
-
-
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(2, 'CLI006', 4, '2026-03-16 10:00:00', 4);
-
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(1, 'CLI007', 3, '2026-03-16 15:00:00', 6);
-
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(3, 'CLI008', 5, '2026-03-16 12:00:00', 5);
-
-
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(1, 'CLI009', 2, '2026-03-20 09:00:00', 4);
-
-INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
-(2, 'CLI010', 4, '2026-03-20 14:00:00', 5);
-
+ 
 
 INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
-(2, 4, 30.00),    -- Carlton ↔ Ivato
-(3, 4, 28.00),    -- Ibis ↔ Ivato
-(2, 5, 260.00),   -- Carlton ↔ Nosy Be
-(3, 5, 255.00);   -- Ibis ↔ Nosy Be
+(1, 2, 30.00),    
+(1, 3, 48.00),     
+(2, 3, 26.00) ;        
 
+INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
+(4, 1, 10.00),    -- Carlton ↔ Ivato
+(4, 2, 48.00),    -- Ibis ↔ Ivato
+(4, 3, 17.00),   -- Carlton ↔ Nosy Be
+(4, 5, 18.00),   -- Carlton ↔ Nosy Be
+(4, 6, 127.00),   -- Carlton ↔ Sainte-Marie
+(4, 7, 127.00),   -- Carlton ↔ Sainte-Marie
+(4, 8, 255.00);   -- Ibis ↔ Nosy Be
+
+ 
  
 SELECT 'Lieux' AS table_name, COUNT(*) AS total FROM lieu
 UNION ALL
@@ -208,3 +195,8 @@ SELECT 'Réservations (total)', COUNT(*) FROM reservation;
 --   drop database hotel_reservation ;
 --   create database hotel_reservation  ; 
 --   \c hotel_reservation 
+
+
+
+INSERT into  distance  ( from_lieu_id  ,  to_lieu_id  ,  km_distance ) VALUES (1,2,40) ;    
+

@@ -64,7 +64,6 @@ public class PlanningService {
         // 2. Récupérer toutes les réservations pour cette date
         List<Reservation> reservations = reservationRepository.findByDate(date);
         if( reservations != null ){
-            System.out.println("Tafiditra etoo aloha zah ");
             List<Reservation> values = directionX(reservations);
             for (Reservation reserv : values) {
                 System.out.println(reserv.getId() + " - " + reserv.getLieuDepart().getLibelle() + " → "
@@ -128,10 +127,10 @@ public class PlanningService {
      * destination.
      */
     private BigDecimal getDistanceAllerSimple(Reservation reservation) throws SQLException {
-        System.out.println(reservation.getLieuDepart().getId() + " ---- "+  reservation.getLieuDestination().getId() );
         if (reservation.getLieuDepart() == null || reservation.getLieuDestination() == null) {
             return null;
         }
+
         Distance distance = distanceRepository.findByFromAndTo(
                 reservation.getLieuDepart().getId(),
                 reservation.getLieuDestination().getId());
@@ -153,12 +152,36 @@ public class PlanningService {
         }
         return distance.getKmDistance().doubleValue() ;
     }
- 
+
+   private Reservation getDistanceMin(List<Reservation> reservation) throws SQLException {
+        if (reservation == null) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
+        }
+
+        Reservation reservationMin = null;
+        double min = Double.MAX_VALUE;
+
+        for (Reservation reserv : reservation) {
+            double distance = getDistanceAllerSimple(reserv).doubleValue();
+
+            if (distance < min) {
+                min = distance;
+                reservationMin = reserv;
+            }
+        }
+
+        return reservationMin;
+    }
+
+
+
+    
    private double getDistanceMin1(List<Reservation> reservation) throws SQLException {
         if (reservation == null) {
             throw new IllegalArgumentException("Reservation non trouvée !");
         }
-        System.out.println(" result  = " + reservation);
+
+        Reservation reservationMin = null;
         double min = Double.MAX_VALUE;
 
         for (Reservation reserv : reservation) {
@@ -174,33 +197,50 @@ public class PlanningService {
 
 
     ///  distance par rapport lieu 
-private List<Reservation> getSameOrderReservation(List<Reservation> reservation, double distanceMin) throws SQLException {
-    if (reservation == null) {
-        throw new IllegalArgumentException("Reservation non trouvée !");
-    }
-
-    List<Reservation> reservationMin = new ArrayList<>();
-    double epsilon = 0.1; // Tolerance for floating-point comparison
-
-    Iterator<Reservation> it = reservation.iterator();
-    
-    while (it.hasNext()) {
-        Reservation reserv = it.next();
-        double distance = getDistanceAllerSimple(reserv).doubleValue();
-            System.out.println( "1 - distance min = " + distanceMin + " , distance = " + distance );
-        // Compare with tolerance
-        if (Math.abs(distance - distanceMin) < epsilon) {
-            reservationMin.add(reserv);
-            System.out.println( "2 - distance min = " + distanceMin + " , distance = " + distance );
-            it.remove();  // Remove from original list
+    private List<Reservation> getSameOrderReservation(List<Reservation> reservation, double distanceMin) throws SQLException {
+        if (reservation == null) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
         }
+
+        List<Reservation> reservationMin = new ArrayList<>();
+
+        Iterator<Reservation> it = reservation.iterator();
+
+        while (it.hasNext()) {
+            Reservation reserv = it.next();
+            double distance = getDistanceAllerSimple(reserv).doubleValue();
+
+            if (Math.abs(distance - distanceMin) < 0.0001) {
+                reservationMin.add(reserv);
+                it.remove();
+            }
+        }
+
+        return reservationMin;
     }
-    
-    return reservationMin;
-}
 
 
-     
+    //     ///  distance par rapport lieu 
+    private Reservation getDistanceMin(List<Reservation> reservation, Lieu nextPlace) throws SQLException {
+        if (reservation == null || reservation.isEmpty()) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
+        }
+
+        Reservation reservationMin = null;
+        double min = Double.MAX_VALUE;
+
+        for (Reservation reserv : reservation) {
+            double distance = getDistanceLieu(nextPlace, reserv.getLieuDestination());
+
+            if (distance < min) {
+                min = distance;
+                reservationMin = reserv;
+            }
+        }
+
+        return reservationMin;
+    }
+
 
     private double getDistanceMin1(List<Reservation> reservation, Lieu nextPlace) throws SQLException {
         if (reservation == null || reservation.isEmpty()) {
@@ -221,6 +261,31 @@ private List<Reservation> getSameOrderReservation(List<Reservation> reservation,
 
         return min;
     }
+
+
+
+    // private List<Reservation> getListDistanceMin(List<Reservation> reservation) throws SQLException {
+    //     if (reservation == null) {
+    //         throw new IllegalArgumentException("Reservation non trouvée !");
+    //     }
+    //     List<Reservation> reservationMin = new ArrayList<>();
+    //     // double min = getDistanceAllerSimple(getDistanceMin(reservation)).doubleValue();
+    //     Map<Reservation, Integer> values = new HashMap<>();
+    //     for (Reservation reserv : reservation) {
+    //         // double distance = getDistanceAllerSimple(reserv).doubleValue();
+    //         String initString = reserv.getLieuDestination().getInitial();
+    //         values.put(reserv, new Utilitaire().getValueInitial(initString));
+    //     }
+
+    //     reservationMin = values.entrySet()
+    //             .stream()
+    //             .sorted(Map.Entry.comparingByValue())
+    //             .map(Map.Entry::getKey)
+    //             .toList();
+
+    //     return reservationMin;
+    // }
+
 
 
     //  this function sort a reservation list by there initial string  of the place name
@@ -249,138 +314,44 @@ private List<Reservation> getSameOrderReservation(List<Reservation> reservation,
 
     
 
-    private List<Reservation> directionX(List<Reservation> reservations) throws SQLException {
-    if (reservations == null || reservations.isEmpty()) {
-        return new ArrayList<>();
-    }
 
-    // Copie de travail pour ne pas modifier la liste originale
-    List<Reservation> restantes = new ArrayList<>(reservations);
-    List<Reservation> ordonnees = new ArrayList<>();
-
-    // Étape 1 : trouver la réservation avec la plus petite distance DIRECTE
-    double minDirect = getMinDistanceDirecte(restantes);
-    List<Reservation> premieres = getReservationsAvecDistanceDirecte(restantes, minDirect);
-    List<Reservation> premieresTriees = getListDistanceOrderByInitial(premieres);
-    ordonnees.addAll(premieresTriees);
-
-    if (ordonnees.isEmpty()) {
-        return ordonnees;
-    }
-
-    Reservation derniere = ordonnees.get(ordonnees.size() - 1);
-
-    // Étape 2 : construire le chemin en utilisant les distances de TRANSITION
-    while (!restantes.isEmpty()) {
-        double minTransition = getMinDistanceTransition(restantes, derniere.getLieuDestination());
-        List<Reservation> candidates = getReservationsAvecDistanceTransition(restantes,
-                derniere.getLieuDestination(), minTransition);
-        List<Reservation> candidatsTries = getListDistanceOrderByInitial(candidates);
-        ordonnees.addAll(candidatsTries);
-
-        if (!candidatsTries.isEmpty()) {
-            derniere = candidatsTries.get(candidatsTries.size() - 1);
+    private List<Reservation> directionX(List<Reservation> reservation) throws SQLException {
+        if (reservation == null) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
         }
-    }
 
-    return ordonnees;
-}
+        List<Reservation> reservationOrder = new ArrayList<>();
 
-// Calcule la plus petite distance DIRECTE parmi les réservations
-private double getMinDistanceDirecte(List<Reservation> reservations) throws SQLException {
-    double min = Double.MAX_VALUE;
-    for (Reservation r : reservations) {
-        double d = getDistanceAllerSimple(r).doubleValue();
-        if (d < min) min = d;
-    }
-    return min;
-}
+        double distanceMin = getDistanceMin1(reservation);
+        List<Reservation> listSameMin = getSameOrderReservation(reservation, distanceMin);
 
-// Récupère toutes les réservations ayant une distance DIRECTE égale à target (avec tolérance)
-private List<Reservation> getReservationsAvecDistanceDirecte(List<Reservation> reservations, double target) throws SQLException {
-    List<Reservation> result = new ArrayList<>();
-    double epsilon = 0.0001;
-    Iterator<Reservation> it = reservations.iterator();
-    while (it.hasNext()) {
-        Reservation r = it.next();
-        double d = getDistanceAllerSimple(r).doubleValue();
-        if (Math.abs(d - target) < epsilon) {
-            result.add(r);
-            it.remove();  // On retire de la liste des restantes
+        List<Reservation> result = getListDistanceOrderByInitial(listSameMin);
+
+        reservationOrder.addAll(result);
+
+        if(result.isEmpty()){
+            return reservationOrder;
         }
-    }
-    return result;
-}
 
-// Calcule la plus petite distance de TRANSITION entre un lieu et les destinations des réservations
-private double getMinDistanceTransition(List<Reservation> reservations, Lieu from) throws SQLException {
-    double min = Double.MAX_VALUE;
-    for (Reservation r : reservations) {
-        double d = getDistanceLieu(from, r.getLieuDestination());
-        if (d < min) min = d;
-    }
-    return min;
-}
+        Reservation lastReservation = result.get(result.size() - 1);
 
-// Récupère les réservations dont la distance de TRANSITION depuis 'from' est égale à target
-private List<Reservation> getReservationsAvecDistanceTransition(List<Reservation> reservations, Lieu from, double target) throws SQLException {
-    List<Reservation> result = new ArrayList<>();
-    double epsilon = 0.0001;
-    Iterator<Reservation> it = reservations.iterator();
-    while (it.hasNext()) {
-        Reservation r = it.next();
-        double d = getDistanceLieu(from, r.getLieuDestination());
-        if (Math.abs(d - target) < epsilon) {
-            result.add(r);
-            it.remove();
+        while (!reservation.isEmpty()) {
+
+            double distance = getDistanceMin1(reservation, lastReservation.getLieuDestination());
+
+            List<Reservation> listSame = getSameOrderReservation(reservation, distance);
+
+            List<Reservation> resultSame = getListDistanceOrderByInitial(listSame); // correction
+
+            reservationOrder.addAll(resultSame);
+
+            if(!resultSame.isEmpty()){
+                lastReservation = resultSame.get(resultSame.size() - 1);
+            }
         }
+
+        return reservationOrder;
     }
-    return result;
-}
-
-
-
-
-    // private List<Reservation> directionX(List<Reservation> reservation) throws SQLException {
-    //     if (reservation == null) {
-    //         throw new IllegalArgumentException("Reservation non trouvée !");
-    //     }
-
-    //     List<Reservation> reservationOrder = new ArrayList<>();
-
-    //     double distanceMin = getDistanceMin1(reservation);
-    //     List<Reservation> listSameMin = getSameOrderReservation(reservation, distanceMin);
-
-    //     List<Reservation> result = getListDistanceOrderByInitial(listSameMin);
-
-    //     reservationOrder.addAll(result);
-
-    //     if(result.isEmpty()){
-    //         return reservationOrder;
-    //     }
-
-    //     Reservation lastReservation = result.get(result.size() - 1);
-
-    //     while (!reservation.isEmpty()) {
-    //         System.out.println("resultttttt"+reservation);
-    //         double distance = getDistanceMin1(reservation, lastReservation.getLieuDestination());
-    //         System.out.println( "tetttttooo ahooo faranyyy : " + distance );
-
-    //         List<Reservation> listSame = getSameOrderReservation(reservation, distance);
-    //         System.out.println( "tetttttooo ahooo  : " +listSame  );
-
-    //         List<Reservation> resultSame = getListDistanceOrderByInitial(listSame); // correction
-    //         System.out.println( "tetttttooo ahooo  : " + resultSame );
-
-    //         reservationOrder.addAll(resultSame);
-
-    //         if(!resultSame.isEmpty()){
-    //             lastReservation = resultSame.get(resultSame.size() - 1);
-    //         }
-    //     }
-
-    //     return reservationOrder;
-    // }
     // private List<Reservation> OrderReservation(List<Reservation> reservation) throws SQLException {
     //     if (reservation == null) {
     //         throw new IllegalArgumentException("Reservation non trouvée !");
