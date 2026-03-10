@@ -23,6 +23,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import java.util.Iterator;
+import java.util.Map;
+import java.util.HashMap;
+
 /**
  * Service de planification et d'attribution automatique de véhicules.
  * 
