@@ -5,6 +5,8 @@ import model.Distance;
 import model.Reservation;
 import model.TypeCarburant;
 import model.Vehicule;
+import model.Lieu;
+import model.Utilitaire;
 import repository.DistanceRepository;
 import repository.ParametreRepository;
 import repository.ReservationRepository;
@@ -16,7 +18,10 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -26,17 +31,17 @@ import java.util.stream.Collectors;
  * aucune modification en base de données.
  *
  * Calcul des horaires :
- *   - dateHeureDepart = reservation.arrivalDate
- *   - distanceAllerRetour = distance(lieuDepart → lieuDestination) × 2
- *   - duree (heures) = distanceAllerRetour / vitesseMoyenne
- *   - dateHeureRetour = dateHeureDepart + duree
+ * - dateHeureDepart = reservation.arrivalDate
+ * - distanceAllerRetour = distance(lieuDepart → lieuDestination) × 2
+ * - duree (heures) = distanceAllerRetour / vitesseMoyenne
+ * - dateHeureRetour = dateHeureDepart + duree
  *
  * Algorithme d'attribution :
  * 1. Pour chaque réservation à la date donnée :
- *    - Chercher les véhicules avec nb_places >= passengerNbr
- *    - Exclure les véhicules déjà occupés (dont dateHeureRetour > dateHeureDepart)
- *    - Priorité : nb places le plus proche, puis Diesel
- *    - Si aucun véhicule disponible : la réservation reste NON_ASSIGNE
+ * - Chercher les véhicules avec nb_places >= passengerNbr
+ * - Exclure les véhicules déjà occupés (dont dateHeureRetour > dateHeureDepart)
+ * - Priorité : nb places le plus proche, puis Diesel
+ * - Si aucun véhicule disponible : la réservation reste NON_ASSIGNE
  */
 public class PlanningService {
 
@@ -48,12 +53,13 @@ public class PlanningService {
     /**
      * Générer le planning pour une date donnée.
      * Attribution STATIQUE (en mémoire uniquement, aucune modification en base).
-     * Retourne la liste des Attribution assignées et la liste des réservations non assignées.
+     * Retourne la liste des Attribution assignées et la liste des réservations non
+     * assignées.
      */
     public PlanningResult genererPlanning(LocalDateTime date) throws SQLException {
 
         // 1. Charger les paramètres
-        double vitesseMoyenne = parametreRepository.getVitesseMoyenne();   // km/h
+        double vitesseMoyenne = parametreRepository.getVitesseMoyenne(); // km/h
 
         // 2. Récupérer toutes les réservations pour cette date
         List<Reservation> reservations = reservationRepository.findByDate(date);
@@ -74,7 +80,8 @@ public class PlanningService {
 
             BigDecimal distanceAllerRetour = distanceAller.multiply(BigDecimal.valueOf(2));
 
-            // dateHeureDepart = arrivalDate (le véhicule part à l'heure d'arrivée du client)
+            // dateHeureDepart = arrivalDate (le véhicule part à l'heure d'arrivée du
+            // client)
             LocalDateTime dateHeureDepart = reservation.getArrivalDate();
 
             // duree en heures = distanceAllerRetour / vitesseMoyenne
@@ -108,7 +115,8 @@ public class PlanningService {
     }
 
     /**
-     * Récupérer la distance aller simple entre le lieu de départ et le lieu de destination.
+     * Récupérer la distance aller simple entre le lieu de départ et le lieu de
+     * destination.
      */
     private BigDecimal getDistanceAllerSimple(Reservation reservation) throws SQLException {
         if (reservation.getLieuDepart() == null || reservation.getLieuDestination() == null) {
@@ -122,13 +130,270 @@ public class PlanningService {
         return (distance != null) ? distance.getKmDistance() : null;
     }
 
+    private double getDistanceLieu(Lieu lieuDepart, Lieu lieuDestination) throws SQLException {
+        if (lieuDepart == null || lieuDestination == null) {
+            return 0.0;
+        }
+
+        Distance distance = distanceRepository.findByFromAndTo(
+                lieuDepart.getId(),
+                lieuDestination.getId());
+        if (distance == null) {
+            throw new IllegalArgumentException(
+                    "Distance non trouvée entre " + lieuDepart.getLibelle() + " et " + lieuDestination.getLibelle());
+        }
+        return distance.getKmDistance().doubleValue() ;
+    }
+
+   private Reservation getDistanceMin(List<Reservation> reservation) throws SQLException {
+        if (reservation == null) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
+        }
+
+        Reservation reservationMin = null;
+        double min = Double.MAX_VALUE;
+
+        for (Reservation reserv : reservation) {
+            double distance = getDistanceAllerSimple(reserv).doubleValue();
+
+            if (distance < min) {
+                min = distance;
+                reservationMin = reserv;
+            }
+        }
+
+        return reservationMin;
+    }
+
+
+
+    
+   private double getDistanceMin1(List<Reservation> reservation) throws SQLException {
+        if (reservation == null) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
+        }
+
+        Reservation reservationMin = null;
+        double min = Double.MAX_VALUE;
+
+        for (Reservation reserv : reservation) {
+            double distance = getDistanceAllerSimple(reserv).doubleValue();
+
+            if (distance < min) {
+                min = distance;
+            }
+        }
+
+        return min;
+    }
+
+
+    ///  distance par rapport lieu 
+    private List<Reservation> getSameOrderReservation(List<Reservation> reservation, double distanceMin) throws SQLException {
+        if (reservation == null) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
+        }
+
+        List<Reservation> reservationMin = new ArrayList<>();
+
+        Iterator<Reservation> it = reservation.iterator();
+
+        while (it.hasNext()) {
+            Reservation reserv = it.next();
+            double distance = getDistanceAllerSimple(reserv).doubleValue();
+
+            if (Math.abs(distance - distanceMin) < 0.0001) {
+                reservationMin.add(reserv);
+                it.remove();
+            }
+        }
+
+        return reservationMin;
+    }
+
+
+    //     ///  distance par rapport lieu 
+    private Reservation getDistanceMin(List<Reservation> reservation, Lieu nextPlace) throws SQLException {
+        if (reservation == null || reservation.isEmpty()) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
+        }
+
+        Reservation reservationMin = null;
+        double min = Double.MAX_VALUE;
+
+        for (Reservation reserv : reservation) {
+            double distance = getDistanceLieu(nextPlace, reserv.getLieuDestination());
+
+            if (distance < min) {
+                min = distance;
+                reservationMin = reserv;
+            }
+        }
+
+        return reservationMin;
+    }
+
+
+    private double getDistanceMin1(List<Reservation> reservation, Lieu nextPlace) throws SQLException {
+        if (reservation == null || reservation.isEmpty()) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
+        }
+
+        Reservation reservationMin = null;
+        double min = Double.MAX_VALUE;
+
+        for (Reservation reserv : reservation) {
+            double distance = getDistanceLieu(nextPlace, reserv.getLieuDestination());
+
+            if (distance < min) {
+                min = distance;
+                reservationMin = reserv;
+            }
+        }
+
+        return min;
+    }
+
+
+
+    // private List<Reservation> getListDistanceMin(List<Reservation> reservation) throws SQLException {
+    //     if (reservation == null) {
+    //         throw new IllegalArgumentException("Reservation non trouvée !");
+    //     }
+    //     List<Reservation> reservationMin = new ArrayList<>();
+    //     // double min = getDistanceAllerSimple(getDistanceMin(reservation)).doubleValue();
+    //     Map<Reservation, Integer> values = new HashMap<>();
+    //     for (Reservation reserv : reservation) {
+    //         // double distance = getDistanceAllerSimple(reserv).doubleValue();
+    //         String initString = reserv.getLieuDestination().getInitial();
+    //         values.put(reserv, new Utilitaire().getValueInitial(initString));
+    //     }
+
+    //     reservationMin = values.entrySet()
+    //             .stream()
+    //             .sorted(Map.Entry.comparingByValue())
+    //             .map(Map.Entry::getKey)
+    //             .toList();
+
+    //     return reservationMin;
+    // }
+
+
+
+    //  this function sort a reservation list by there initial string  of the place name
+    // Dans le cas hoe mitovy tss hafa n distance entre 2 reservation dia atao sort par initial string
+    private List<Reservation> getListDistanceOrderByInitial(List<Reservation> reservation) throws SQLException {
+        if (reservation == null) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
+        }
+
+        List<Reservation> reservationMin = new ArrayList<>();
+        Map<Reservation, Integer> values = new HashMap<>();
+
+        for (Reservation reserv : reservation) {
+            String initString = reserv.getLieuDestination().getInitial();
+            values.put(reserv, new Utilitaire().getValueInitial(initString));
+        }
+
+        reservationMin = values.entrySet()
+                .stream()
+                .sorted(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .toList();
+
+        return reservationMin;
+    }
+
+    
+
+
+    private List<Reservation> directionX(List<Reservation> reservation) throws SQLException {
+        if (reservation == null) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
+        }
+
+        List<Reservation> reservationOrder = new ArrayList<>();
+
+        double distanceMin = getDistanceMin1(reservation);
+        List<Reservation> listSameMin = getSameOrderReservation(reservation, distanceMin);
+
+        List<Reservation> result = getListDistanceOrderByInitial(listSameMin);
+
+        reservationOrder.addAll(result);
+
+        if(result.isEmpty()){
+            return reservationOrder;
+        }
+
+        Reservation lastReservation = result.get(result.size() - 1);
+
+        while (!reservation.isEmpty()) {
+
+            double distance = getDistanceMin1(reservation, lastReservation.getLieuDestination());
+
+            List<Reservation> listSame = getSameOrderReservation(reservation, distance);
+
+            List<Reservation> resultSame = getListDistanceOrderByInitial(listSame); // correction
+
+            reservationOrder.addAll(resultSame);
+
+            if(!resultSame.isEmpty()){
+                lastReservation = resultSame.get(resultSame.size() - 1);
+            }
+        }
+
+        return reservationOrder;
+    }
+    // private List<Reservation> OrderReservation(List<Reservation> reservation) throws SQLException {
+    //     if (reservation == null) {
+    //         throw new IllegalArgumentException("Reservation non trouvée !");
+    //     }
+    //     List<Reservation> reservationOrder = new ArrayList<>();
+    //     for (Reservation reserv : reservationOrder) {
+
+    //     }
+
+    //     return distance.getKmDistance();
+    // }
+
+    private double getDistanceRegrouper(List<Reservation> reservation) throws SQLException {
+        if (reservation == null) {
+            throw new IllegalArgumentException("Reservation non trouvée !");
+        }
+        double totalDistance = 0.0;
+        Lieu LieuDepart = new Lieu();
+        Lieu LieuFinal = new Lieu();
+        for (int i = 1; i < reservation.size(); i++) {
+            if (i == 0) {
+                LieuFinal = reservation.get(i).getLieuDestination();
+            } else {
+                totalDistance += getDistanceLieu(LieuFinal, reservation.get(i).getLieuDestination());
+                LieuFinal = reservation.get(i).getLieuDestination();
+            }
+
+            if (i == reservation.size() - 1) {
+                totalDistance += getDistanceLieu(reservation.get(i).getLieuDestination(),
+                        reservation.get(i).getLieuDepart());
+            }
+        }
+
+        // return BigDecimal.valueOf(totalDistance);
+        return totalDistance;
+    }
+
+    // private BigDecimal getDistanceTotal(List<Reservation> reservation) throws
+    // SQLException {
+
+    // }
+
     /**
      * Attribution en mémoire d'un véhicule à une réservation.
-     * Vérifie les conflits horaires avec les attributions déjà faites dans cette simulation.
+     * Vérifie les conflits horaires avec les attributions déjà faites dans cette
+     * simulation.
      * Ne modifie PAS la base de données.
      */
     private Vehicule attribuerVehiculeEnMemoire(Reservation reservation, List<Attribution> attributionsExistantes,
-                                                 LocalDateTime dateHeureDepart, LocalDateTime dateHeureRetour) throws SQLException {
+            LocalDateTime dateHeureDepart, LocalDateTime dateHeureRetour) throws SQLException {
         // Chercher véhicules avec assez de places
         List<Vehicule> disponibles = vehiculeRepository.findAvailableVehicules(reservation.getPassengerNbr());
 
@@ -145,15 +410,18 @@ public class PlanningService {
     }
 
     /**
-     * Vérifier si un véhicule a un conflit horaire avec les attributions déjà faites.
-     * Conflit = le véhicule est occupé (pas encore de retour au moment du nouveau départ).
+     * Vérifier si un véhicule a un conflit horaire avec les attributions déjà
+     * faites.
+     * Conflit = le véhicule est occupé (pas encore de retour au moment du nouveau
+     * départ).
      */
     private boolean hasConflitHoraire(Long vehiculeId, LocalDateTime nouveauDepart, LocalDateTime nouveauRetour,
-                                       List<Attribution> attributionsExistantes) {
+            List<Attribution> attributionsExistantes) {
         for (Attribution t : attributionsExistantes) {
             if (t.getVehicule().getId().equals(vehiculeId)) {
                 // Conflit si les plages horaires se chevauchent
-                // Pas de conflit si : nouveauRetour <= existantDepart OU nouveauDepart >= existantRetour
+                // Pas de conflit si : nouveauRetour <= existantDepart OU nouveauDepart >=
+                // existantRetour
                 boolean pasDeConflit = nouveauRetour.compareTo(t.getDateHeureDepart()) <= 0
                         || nouveauDepart.compareTo(t.getDateHeureRetour()) >= 0;
                 if (!pasDeConflit) {

@@ -39,10 +39,9 @@ public class DistanceRepository {
                 }
             }
         }
-
         return null;
     }
-
+ 
     /**
      * Récupérer toutes les distances
      */

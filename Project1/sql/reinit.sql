@@ -148,58 +148,38 @@ INSERT INTO parameters (key, value) VALUES
 -- DATE: 2026-03-15 → Plusieurs réservations pour tester l'algorithme
 -- ======================================================================
 
--- Résa 1 : 4 passagers, départ Colbert → Ivato (distance: 35.5 km)
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
 (1, 'CLI001', 4, '2026-03-15 14:00:00', 4);
 
--- Résa 2 : 3 passagers, départ Carlton → Nosy Be (distance: 250 km — pas de distance directe Carlton→Nosy Be !)
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
 (2, 'CLI002', 3, '2026-03-15 16:00:00', 5);
 
--- Résa 3 : 6 passagers, départ Colbert → Sainte-Marie (distance: 180 km)
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
 (1, 'CLI003', 6, '2026-03-15 09:00:00', 6);
 
--- Résa 4 : 2 passagers, départ Ibis → Ivato (conflit horaire potentiel avec Résa 1)
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
 (3, 'CLI004', 2, '2026-03-15 14:00:00', 4);
 
--- Résa 5 : 10 passagers (aucun véhicule assez grand → restera NON_ASSIGNE)
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
 (1, 'CLI005', 10, '2026-03-15 11:00:00', 5);
 
--- ======================================================================
--- DATE: 2026-03-16 → Toutes les réservations (pour tester l'algo complet)
--- ======================================================================
 
--- Résa 6 : 4 passagers, départ Carlton → Ivato
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
 (2, 'CLI006', 4, '2026-03-16 10:00:00', 4);
 
--- Résa 7 : 3 passagers, départ Colbert → Sainte-Marie
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
 (1, 'CLI007', 3, '2026-03-16 15:00:00', 6);
 
--- Résa 8 : 5 passagers, départ Ibis → Nosy Be
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
 (3, 'CLI008', 5, '2026-03-16 12:00:00', 5);
 
--- ======================================================================
--- DATE: 2026-03-20 → Pour tester une autre date
--- ======================================================================
 
--- Résa 9 : 2 passagers, départ Colbert → Ivato
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
 (1, 'CLI009', 2, '2026-03-20 09:00:00', 4);
 
--- Résa 10 : 4 passagers, départ Carlton → Nosy Be
 INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
 (2, 'CLI010', 4, '2026-03-20 14:00:00', 5);
 
--- ==========================================
--- 6. AJOUT DE DISTANCES MANQUANTES
--- (pour que toutes les réservations aient une distance)
--- ==========================================
 
 INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
 (2, 4, 30.00),    -- Carlton ↔ Ivato
@@ -207,10 +187,7 @@ INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
 (2, 5, 260.00),   -- Carlton ↔ Nosy Be
 (3, 5, 255.00);   -- Ibis ↔ Nosy Be
 
--- ==========================================
--- 7. VÉRIFICATION
--- ==========================================
-
+ 
 SELECT 'Lieux' AS table_name, COUNT(*) AS total FROM lieu
 UNION ALL
 SELECT 'Distances', COUNT(*) FROM distance
