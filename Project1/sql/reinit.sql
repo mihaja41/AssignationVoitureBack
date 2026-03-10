@@ -164,6 +164,9 @@ INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_dat
 (4, 'CLI003', 6, '2026-03-15 09:00:00', 3);
 
  
+INSERT INTO reservation (lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
+(4, 'CLI003', 6, '2026-03-16 23:33:00', 5);
+
 
 INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
 (1, 2, 30.00),    

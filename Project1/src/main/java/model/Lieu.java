@@ -26,6 +26,9 @@ public class Lieu {
         return code != null && !code.isEmpty() ? code.substring(0, 1).toUpperCase() : "";
     }
 
+    // public String getNameLibille(){
+    //     return  ", "
+    // }
 
     // Getters & Setters
     public Long getId() {

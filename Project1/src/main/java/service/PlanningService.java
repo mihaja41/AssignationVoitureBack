@@ -173,7 +173,7 @@ public class PlanningService {
                     double  dureeTotal  =  getTotalDuree( valx  )   ; 
                     double  distanceTotal  = getTotalDistance( valx  ) ; 
                     
-
+                    attribution.setDetailTraject(valx )  ; 
                     attribution.setDateHeureDepart(dateHeureDepart);
                     attribution.setDistanceKm(distanceAller);
                     attribution.setDistanceAllerRetourKm( BigDecimal.valueOf(distanceTotal) );

@@ -1,6 +1,7 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
 <%@ page import="java.util.*" %>
 <%@ page import="model.Attribution" %>
+<%@ page import="model.TrajetCar" %>
 <%@ page import="model.Reservation" %>
 <%@ page import="java.time.format.DateTimeFormatter" %>
 <%@ page import="java.math.BigDecimal" %>
@@ -250,6 +251,7 @@
                         List<Reservation> grouped = attr.getReservations();
                         int totalPass = attr.getTotalPassengers();
                         int placesRestantes = attr.getPlacesRestantes();
+                        List<TrajetCar> trajects  = attr.getDetailTraject() ;
                     %>
                         <tr>
                             <td>
@@ -273,6 +275,8 @@
                                     <% } %>
                                 </small>
                             </td>
+
+                            
                             <td>
                                 <% for (int i = 0; i < grouped.size(); i++) {
                                     Reservation r = grouped.get(i);
@@ -306,6 +310,35 @@
                             <td><%= attr.getDateHeureDepart() != null ? attr.getDateHeureDepart().format(dtf) : "-" %></td>
                             <td><%= attr.getDateHeureRetour() != null ? attr.getDateHeureRetour().format(dtf) : "-" %></td>
                             <td><span class="badge badge-assigne">ASSIGNÉ</span></td>
+                        </tr>
+
+                        <%-- Trajet detail  --%>
+                        <tr>
+                          <td colspan="8">
+                                <%
+                                double sumDurre = 0.0 ; 
+                                double sumDistance = 0.0 ; 
+                                for (int i = 0; i < trajects.size(); i++) {
+                                    TrajetCar r = trajects.get(i);
+                                    sumDurre+= r.getDurre() ; 
+                                    sumDistance+= r.getDistance() ; 
+                                %>
+                                    # <%= i %> <%= r.getReservationFrom().getLibelle() %> - <%= r.getReservationTo().getLibelle() %>
+                                    (distance = <%= r.getDistance() %> km =>  durre = <%= r.getDurre()*60 %> min )
+                                    <% if (i <trajects.size() - 1) { %><br><% } %>
+                                <% } %>
+                              
+                                <% if (trajects.size() > 1) { %>
+                                    <br>
+                                    <small style="color: #9C27B0; font-weight: bold;">
+                                        ⇒ <%= sumDistance %> km au total 
+                                    </small>
+                                    <br>
+                                    <small style="color: #9C27B0; font-weight: bold;">
+                                        ⇒ <%= sumDurre*60 %> min au total 
+                                    </small>
+                                <% } %>
+                            </td>
                         </tr>
                     <% } %>
                 </tbody>
