@@ -155,7 +155,6 @@ INSERT INTO parameters (key, value) VALUES
 -- =====================================================================
 -- 5.5 RÉSERVATIONS — Départ TOUJOURS depuis IVATO (id = 1)
 -- =====================================================================
-
 -- ═════════════════════════════════════════════════════════════════
 -- DATE 2026-03-10  08:00 — SCÉNARIO A : REGROUPEMENT BASIQUE
 -- 3 réservations, MÊME heure, MÊME départ (aéroport)

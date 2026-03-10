@@ -1,0 +1,16 @@
+
+1 - Depart Airoport
+
+2- Hotel1 client1 , Ibis Ankorondrano
+    AP->H1 = 12km
+
+3- Hotel2 client2 , Centell Antanimena
+    AP->H2 = 13km
+
+3- Hotel3 client3 , Tower
+    AP->H3 = 12km
+
+4- Hotel4 client4 , Tower
+    AP->H3 = 20km
+
+

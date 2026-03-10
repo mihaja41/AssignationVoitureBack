@@ -1,0 +1,15 @@
+
+-- Atody 1 lasa lot vao2 
+-- soit atody amidy , soit atody lasa lot vao2 
+
+
+-- manome sakafo 1g / tete / jour
+-- recencer atody na lot x 
+-- mijery situation am date iray (situation selon date x) anaty lot x , nbr poulet , achat , sakafo (lany sakony reto zay ) , maty (par lot) , poids moyen poulet , prix de vente , nbr atody , prix atody , benefice , etc.
+-- Tsisy rehefa foy ilay atody achat = 0 
+-- nbr atody miena rehefa misy fohy ny atody 
+-- atody avy amina lot , par pondeson isanandro dia par lot foana 
+--- Affichage mamadika lot atody ho lasa akoha 
+-- mampiditra atody fotsny am lot 1 fa ampina date fotsny 
+
+

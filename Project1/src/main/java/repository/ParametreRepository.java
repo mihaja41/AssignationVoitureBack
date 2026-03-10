@@ -54,15 +54,21 @@ public class ParametreRepository {
      */
     public double getVitesseMoyenne() throws SQLException {
         Parametre p = findByKey("vitesse_moyenne");
-        return (p != null) ? p.getValueAsDouble() : 30.0;
+        if (p == null){
+            throw new IllegalArgumentException("La vitesse moyenne n'existe pas dans la base , Veillez la creer  ! ");
+        }
+        return  p.getValueAsDouble() ; 
     }
 
     /**
      * Récupérer le temps d'attente (en minutes). Défaut : 30.
      */
-    public double getTempsAttente() throws SQLException {
+    public double getTempsAttente()  throws SQLException, IllegalArgumentException {
         Parametre p = findByKey("temps_attente");
-        return (p != null) ? p.getValueAsDouble() : 30.0;
+        if (p == null){
+            throw new IllegalArgumentException("Le temps d'attente n'existe pas dans la base, Veillez le creer   ! ");
+        }
+        return  p.getValueAsDouble() ; 
     }
 
     private Parametre mapResultSet(ResultSet rs) throws SQLException {

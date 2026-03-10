@@ -22,6 +22,11 @@ public class Lieu {
         this.createdAt = createdAt;
     }
 
+    public String getInitial() {
+        return code != null && !code.isEmpty() ? code.substring(0, 1).toUpperCase() : "";
+    }
+
+
     // Getters & Setters
     public Long getId() {
         return id;
