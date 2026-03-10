@@ -30,6 +30,9 @@ public class Attribution {
     private BigDecimal distanceAllerRetourKm;  // distance aller-retour (= distanceKm × 2)
     private String statut;                     // "ASSIGNE"
 
+
+    private List<TrajetCar> detailTraject = new ArrayList<>(); 
+
     public Attribution() {}
 
     // ========== Regroupement ==========
@@ -47,6 +50,15 @@ public class Attribution {
     public List<Reservation> getReservations() {
         return reservations;
     }
+
+    public List<TrajetCar> getDetailTraject() {
+        return detailTraject;
+    }
+
+    public void setDetailTraject(List<TrajetCar> detailTraject) {
+        this.detailTraject = detailTraject;
+    }
+    
 
     /**
      * Nombre total de passagers dans ce véhicule (somme de toutes les réservations regroupées).

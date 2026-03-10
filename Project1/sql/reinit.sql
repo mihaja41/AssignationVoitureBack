@@ -210,3 +210,5 @@ SELECT reference, nb_place, type_carburant FROM vehicule ORDER BY nb_place, type
 
 INSERT into  distance  ( from_lieu_id  ,  to_lieu_id  ,  km_distance ) VALUES (1,2,40) ;    
 
+  30 km -> 1h 
+  
