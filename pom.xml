@@ -83,6 +83,35 @@
             <version>${postgres.version}</version>
         </dependency>
 
+        <!-- Framework local -->
+        <dependency>
+            <groupId>com.framework</groupId>
+            <artifactId>fw</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${basedir}/Project1/lib/fw.jar</systemPath>
+        </dependency>
+
+        <!-- GSON -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.13.2</version>
+        </dependency>
+
+        <!-- Commons -->
+        <dependency>
+            <groupId>commons-beanutils</groupId>
+            <artifactId>commons-beanutils</artifactId>
+            <version>1.9.4</version>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+            <version>1.2</version>
+        </dependency>
+
     </dependencies>
 
     <!-- ========================= -->
@@ -104,19 +133,27 @@
                 </configuration>
             </plugin>
 
-            <!-- JAR executable -->
+            <!-- Copier project1.war existant et le renommer -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>3.3.0</version>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <!-- A MODIFIER avec ta classe Main -->
-                           <mainClass>com.gestion.assignationvoiture.Application</mainClass>
-                        </manifest>
-                    </archive>
-                </configuration>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <copy file="Project1/build/project1.war" 
+                                      tofile="${project.build.directory}/assignation-voiture.war"
+                                      failonerror="false"/>
+                                <echo message="✓ WAR copied: ${project.build.directory}/assignation-voiture.war"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
         </plugins>

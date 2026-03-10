@@ -18,30 +18,33 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * Service de planification et d'attribution automatique de véhicules.
  * 
- * ATTRIBUTION STATIQUE : les attributions sont calculées en mémoire uniquement,
- * aucune modification en base de données.
+ * Sprint 4 – Regroupement d'assignation :
  *
- * Calcul des horaires :
- * - dateHeureDepart = reservation.arrivalDate
- * - distanceAllerRetour = distance(lieuDepart → lieuDestination) × 2
- * - duree (heures) = distanceAllerRetour / vitesseMoyenne
- * - dateHeureRetour = dateHeureDepart + duree
- *
- * Algorithme d'attribution :
- * 1. Pour chaque réservation à la date donnée :
- * - Chercher les véhicules avec nb_places >= passengerNbr
- * - Exclure les véhicules déjà occupés (dont dateHeureRetour > dateHeureDepart)
- * - Priorité : nb places le plus proche, puis Diesel
- * - Si aucun véhicule disponible : la réservation reste NON_ASSIGNE
+ * ALGORITHME :
+ * 1. Récupérer toutes les réservations d'une date donnée
+ * 2. Trier par nombre de passagers DÉCROISSANT (traiter le plus gros groupe en premier)
+ * 3. Pour chaque réservation non encore assignée :
+ *    a. Chercher les véhicules avec nb_places >= passengerNbr
+ *    b. Exclure véhicule si heure_retour > heure_depart (pas encore revenu)
+ *    c. Choisir le véhicule : 
+ *       - minimiser (nb_places - passengerNbr) → moins de places vides
+ *       - si égalité → priorité Diesel ('D')
+ *       - si encore égalité → random
+ *    d. REGROUPEMENT : si places restantes >= 1, chercher d'autres réservations compatibles :
+ *       - même date et heure de départ
+ *       - même lieu de départ (aéroport)
+ *       - passengerNbr <= places restantes
+ *       - non encore assignées
+ *       Les assigner au même véhicule, recalculer places restantes, répéter.
+ * 4. Retourner les attributions et les réservations non assignées.
  */
 public class PlanningService {
 
@@ -53,8 +56,7 @@ public class PlanningService {
     /**
      * Générer le planning pour une date donnée.
      * Attribution STATIQUE (en mémoire uniquement, aucune modification en base).
-     * Retourne la liste des Attribution assignées et la liste des réservations non
-     * assignées.
+     * Implémente le regroupement Sprint 4.
      */
     public PlanningResult genererPlanning(LocalDateTime date) throws SQLException {
 
@@ -64,14 +66,23 @@ public class PlanningService {
         // 2. Récupérer toutes les réservations pour cette date
         List<Reservation> reservations = reservationRepository.findByDate(date);
 
-        // 3. Attribution en mémoire
+        // 3. Trier par nombre de passagers DÉCROISSANT
+        //    Traiter en premier la réservation avec le plus grand nombre de passagers
+        reservations.sort((a, b) -> Integer.compare(b.getPassengerNbr(), a.getPassengerNbr()));
+
+        // 4. Attribution avec regroupement
         List<Attribution> attributions = new ArrayList<>();
         List<Reservation> nonAssignees = new ArrayList<>();
+        Set<Long> assignedIds = new HashSet<>();
 
         for (Reservation reservation : reservations) {
-            // Calculer la distance aller-retour
-            BigDecimal distanceAller = getDistanceAllerSimple(reservation);
+            // Sauter si déjà assignée (regroupée dans un véhicule précédent)
+            if (assignedIds.contains(reservation.getId())) {
+                continue;
+            }
 
+            // Calculer la distance aller simple
+            BigDecimal distanceAller = getDistanceAllerSimple(reservation);
             if (distanceAller == null) {
                 // Pas de distance trouvée → non assignable
                 nonAssignees.add(reservation);
@@ -86,24 +97,52 @@ public class PlanningService {
 
             // duree en heures = distanceAllerRetour / vitesseMoyenne
             double dureeHeures = distanceAllerRetour.doubleValue() / vitesseMoyenne;
-            // Convertir en minutes (pas de temps d'attente pour l'instant)
             long dureeMinutes = Math.round(dureeHeures * 60);
-
             LocalDateTime dateHeureRetour = dateHeureDepart.plusMinutes(dureeMinutes);
 
-            // Chercher véhicules disponibles (assez de places + pas de conflit horaire)
-            Vehicule choisi = attribuerVehiculeEnMemoire(reservation, attributions, dateHeureDepart, dateHeureRetour);
+            // Chercher le meilleur véhicule disponible
+            Vehicule choisi = attribuerVehiculeEnMemoire(reservation, attributions, dateHeureDepart);
 
             if (choisi != null) {
-                // Créer une attribution en mémoire
+                // Créer l'attribution
                 Attribution attribution = new Attribution();
                 attribution.setVehicule(choisi);
-                attribution.setReservation(reservation);
+                attribution.setReservation(reservation);   // backward compat
+                attribution.addReservation(reservation);    // liste regroupée
                 attribution.setDateHeureDepart(dateHeureDepart);
                 attribution.setDateHeureRetour(dateHeureRetour);
                 attribution.setDistanceKm(distanceAller);
                 attribution.setDistanceAllerRetourKm(distanceAllerRetour);
                 attribution.setStatut("ASSIGNE");
+
+                assignedIds.add(reservation.getId());
+
+                // ============================
+                // REGROUPEMENT (Sprint 4 DEV1)
+                // ============================
+                int placesRestantes = choisi.getNbPlace() - reservation.getPassengerNbr();
+
+                if (placesRestantes >= 1) {
+                    // Chercher d'autres réservations compatibles à regrouper
+                    for (Reservation autre : reservations) {
+                        if (placesRestantes < 1) break;
+                        if (assignedIds.contains(autre.getId())) continue;
+
+                        // Critères de compatibilité pour regroupement :
+                        // 1. Même date ET même heure de départ (arrivalDate identique)
+                        if (!autre.getArrivalDate().equals(reservation.getArrivalDate())) continue;
+                        // 2. Même lieu de départ (aéroport)
+                        if (autre.getLieuDepart() == null || reservation.getLieuDepart() == null) continue;
+                        if (!autre.getLieuDepart().getId().equals(reservation.getLieuDepart().getId())) continue;
+                        // 3. Nombre de passagers <= places restantes
+                        if (autre.getPassengerNbr() > placesRestantes) continue;
+
+                        // Compatible → regrouper dans le même véhicule
+                        attribution.addReservation(autre);
+                        assignedIds.add(autre.getId());
+                        placesRestantes -= autre.getPassengerNbr();
+                    }
+                }
 
                 attributions.add(attribution);
             } else {
@@ -388,18 +427,16 @@ public class PlanningService {
 
     /**
      * Attribution en mémoire d'un véhicule à une réservation.
-     * Vérifie les conflits horaires avec les attributions déjà faites dans cette
-     * simulation.
-     * Ne modifie PAS la base de données.
+     * Vérifie la disponibilité : exclut les véhicules dont heure_retour > heure_depart.
      */
     private Vehicule attribuerVehiculeEnMemoire(Reservation reservation, List<Attribution> attributionsExistantes,
-            LocalDateTime dateHeureDepart, LocalDateTime dateHeureRetour) throws SQLException {
+                                                LocalDateTime dateHeureDepart) throws SQLException {
         // Chercher véhicules avec assez de places
         List<Vehicule> disponibles = vehiculeRepository.findAvailableVehicules(reservation.getPassengerNbr());
 
-        // Exclure les véhicules déjà occupés dans cette simulation (conflit horaire)
+        // Exclure les véhicules pas encore revenus (heure_retour > heure_depart de la réservation)
         disponibles = disponibles.stream()
-                .filter(v -> !hasConflitHoraire(v.getId(), dateHeureDepart, dateHeureRetour, attributionsExistantes))
+                .filter(v -> !hasConflitHoraire(v.getId(), dateHeureDepart, attributionsExistantes))
                 .collect(Collectors.toList());
 
         if (disponibles.isEmpty()) {
@@ -410,21 +447,16 @@ public class PlanningService {
     }
 
     /**
-     * Vérifier si un véhicule a un conflit horaire avec les attributions déjà
-     * faites.
-     * Conflit = le véhicule est occupé (pas encore de retour au moment du nouveau
-     * départ).
+     * Vérifier si un véhicule a un conflit horaire.
+     * Sprint 4 : Exclure véhicule si heure_retour > heure_depart de la réservation
+     * (le véhicule n'est pas encore revenu au moment du nouveau départ).
      */
-    private boolean hasConflitHoraire(Long vehiculeId, LocalDateTime nouveauDepart, LocalDateTime nouveauRetour,
-            List<Attribution> attributionsExistantes) {
+    private boolean hasConflitHoraire(Long vehiculeId, LocalDateTime nouveauDepart,
+                                       List<Attribution> attributionsExistantes) {
         for (Attribution t : attributionsExistantes) {
             if (t.getVehicule().getId().equals(vehiculeId)) {
-                // Conflit si les plages horaires se chevauchent
-                // Pas de conflit si : nouveauRetour <= existantDepart OU nouveauDepart >=
-                // existantRetour
-                boolean pasDeConflit = nouveauRetour.compareTo(t.getDateHeureDepart()) <= 0
-                        || nouveauDepart.compareTo(t.getDateHeureRetour()) >= 0;
-                if (!pasDeConflit) {
+                // Conflit si le véhicule n'est pas encore revenu
+                if (t.getDateHeureRetour().compareTo(nouveauDepart) > 0) {
                     return true;
                 }
             }
@@ -433,11 +465,11 @@ public class PlanningService {
     }
 
     /**
-     * Choisir le meilleur véhicule selon les règles métier :
+     * Choisir le meilleur véhicule selon les règles métier Sprint 4 :
      * 1. Priorité au nb de places le plus PROCHE du nb de passagers
-     * 2. Si plusieurs avec même nb de places → priorité DIESEL
-     * 3. Si plusieurs Diesel → choix aléatoire
-     * 4. Si aucun Diesel → choix aléatoire
+     *    → (nb_places - passengerNbr) le plus petit → minimiser places vides
+     * 2. Si plusieurs avec même écart → priorité DIESEL ('D')
+     * 3. Si encore égalité (même places + même carburant) → choix aléatoire (random)
      */
     private Vehicule choisirVehicule(List<Vehicule> disponibles, int passengerNbr) {
         if (disponibles.size() == 1) {
@@ -459,17 +491,19 @@ public class PlanningService {
             return plusProches.get(0);
         }
 
-        // Étape 3 : Parmi les plus proches, priorité Diesel
+        // Étape 3 : Parmi les plus proches, priorité Diesel ('D')
         List<Vehicule> diesels = plusProches.stream()
                 .filter(v -> v.getTypeCarburant() == TypeCarburant.D)
                 .collect(Collectors.toList());
 
         if (diesels.size() >= 2) {
+            // Encore égalité → random
             Collections.shuffle(diesels);
             return diesels.get(0);
         } else if (diesels.size() == 1) {
             return diesels.get(0);
         } else {
+            // Aucun diesel → random parmi les plus proches
             Collections.shuffle(plusProches);
             return plusProches.get(0);
         }
