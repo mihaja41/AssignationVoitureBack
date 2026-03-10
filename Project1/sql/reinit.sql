@@ -1,4 +1,4 @@
--- psql -U postgres -d postgres -f /home/anita/Documents/itu_lesson/S5/FRAME_WORK/Project/AssignationVoitureBack/Project1/sql/reinit.sql
+-- psql -U postgres -d postgres -f reinit.sql
 
 -- Fermer toutes les connexions actives à la base
 SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'hotel_reservation' AND pid <> pg_backend_pid();
@@ -12,7 +12,6 @@ CREATE DATABASE hotel_reservation;
 -- ==========================================
 -- 1. NETTOYAGE (sécurité supplémentaire)
 -- ==========================================
-
 
 DROP TABLE IF EXISTS distance CASCADE;
 DROP TABLE IF EXISTS reservation CASCADE;
@@ -47,8 +46,7 @@ CREATE TABLE token (
     revoked BOOLEAN DEFAULT false
 );
 
--- Table LIEU (tous les lieux : hôtels de départ + destinations)
--- Remplace l'ancienne table hotel
+-- Table LIEU
 CREATE TABLE lieu (
     id BIGSERIAL PRIMARY KEY,
     code VARCHAR(50) NOT NULL UNIQUE,
@@ -64,7 +62,7 @@ CREATE TABLE vehicule (
     type_carburant type_carburant_enum NOT NULL
 );
 
--- Table RESERVATION (simplifiée : l'attribution véhicule est calculée en mémoire par le PlanningService)
+-- Table RESERVATION
 CREATE TABLE reservation (
     id BIGSERIAL PRIMARY KEY,
     lieu_depart_id BIGINT NOT NULL REFERENCES lieu(id) ON DELETE CASCADE,
@@ -75,7 +73,7 @@ CREATE TABLE reservation (
     lieu_destination_id BIGINT REFERENCES lieu(id) ON DELETE SET NULL
 );
 
--- Table PARAMETERS (paramètres de calcul : vitesse moyenne, temps d'attente)
+-- Table PARAMETERS
 CREATE TABLE parameters (
     id SERIAL PRIMARY KEY,
     key TEXT NOT NULL UNIQUE,
@@ -84,7 +82,7 @@ CREATE TABLE parameters (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Table DISTANCE (distances entre lieux)
+-- Table DISTANCE
 CREATE TABLE distance (
     id BIGSERIAL PRIMARY KEY,
     from_lieu_id BIGINT NOT NULL REFERENCES lieu(id) ON DELETE CASCADE,
@@ -105,32 +103,40 @@ CREATE INDEX idx_lieu_code ON lieu(code);
 CREATE INDEX idx_distance_from_to ON distance(from_lieu_id, to_lieu_id);
 
 -- ==========================================
--- 5. DONNÉES DE TEST
+-- 5. DONNÉES DE TEST — SPRINT 4 (REGROUPEMENT)
 -- ==========================================
+-- NB : Le lieu de départ est TOUJOURS l'aéroport (IVATO).
+--       Il s'agit d'un RACCOMPAGNEMENT des clients depuis l'aéroport.
 
--- 5.1 Lieux (hôtels de départ + destinations : aéroports, villes)
+-- 5.1 LIEUX
+-- id=1 Aéroport (TOUJOURS le point de départ)
+-- id=2..8 Destinations
 INSERT INTO lieu (code, libelle) VALUES
-('COLBERT', 'Hotel Colbert, Antananarivo'),
-('CARLTON', 'Hotel Carlton, Antananarivo'),
-('IBIS', 'Hotel Ibis, Antananarivo'),
-('IVATO', 'Ivato Airport, Antananarivo'),
-('NOSY_BE', 'Nosy Be Airport'),
-('SAINTE_MARIE', 'Sainte-Marie Airport'),
-('ANTALAHA', 'Antalaha Airport'),
-('SAMBAVA', 'Sambava Airport');
+('IVATO',         'Aeroport Ivato'),               -- id = 1
+('COLBERT',       'Hotel Colbert'),                 -- id = 2
+('CARLTON',       'Hotel Carlton'),                 -- id = 3
+('IBIS',          'Hotel Ibis'),                    -- id = 4
+('NOSY_BE',       'Nosy Be'),                       -- id = 5
+('SAINTE_MARIE',  'Sainte-Marie'),                  -- id = 6
+('ANTSIRABE',     'Antsirabe'),                     -- id = 7
+('MAHAJANGA',     'Mahajanga');                      -- id = 8
 
--- 5.2 Distances entre lieux (km)
--- UNE SEULE ENTRÉE par paire de lieux (pas de doublon A→B / B→A)
--- La distance est la même dans les deux sens.
--- Le code Java cherche dans les deux sens automatiquement.
+-- 5.2 DISTANCES (Aéroport IVATO vers chaque destination)
 INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
-(1, 4, 35.50),    -- Colbert ↔ Ivato
-(1, 5, 250.00),   -- Colbert ↔ Nosy Be
-(1, 6, 180.00),   -- Colbert ↔ Sainte-Marie
-(4, 5, 285.00),   -- Ivato ↔ Nosy Be
-(4, 6, 200.00);   -- Ivato ↔ Sainte-Marie
+(1, 2,  20.00),   -- Ivato -> Colbert        20 km
+(1, 3,  22.00),   -- Ivato -> Carlton        22 km
+(1, 4,  18.00),   -- Ivato -> Ibis           18 km
+(1, 5, 285.00),   -- Ivato -> Nosy Be       285 km
+(1, 6, 200.00),   -- Ivato -> Sainte-Marie  200 km
+(1, 7, 170.00),   -- Ivato -> Antsirabe     170 km
+(1, 8, 380.00);   -- Ivato -> Mahajanga     380 km
 
--- 5.3 Véhicules (5 véhicules avec différents carburants et capacités)
+-- 5.3 VÉHICULES
+-- 2x 4 places (Diesel + Essence)  -> teste priorité Diesel en cas d'égalité
+-- 2x 7 places (Diesel + Diesel)   -> teste random en cas d'égalité complète
+-- 1x 5 places Électrique
+-- 1x 8 places Hybride
+-- 1x 2 places Essence (petit véhicule)
 INSERT INTO vehicule (reference, nb_place, type_carburant) VALUES
 ('AV-001', 4, 'D'),    -- Diesel, 4 places
 ('AV-002', 4, 'Es'),   -- Essence, 4 places
@@ -176,20 +182,24 @@ INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
  
  
 SELECT 'Lieux' AS table_name, COUNT(*) AS total FROM lieu
-UNION ALL
-SELECT 'Distances', COUNT(*) FROM distance
-UNION ALL
-SELECT 'Véhicules', COUNT(*) FROM vehicule
-UNION ALL
-SELECT 'Paramètres', COUNT(*) FROM parameters
-UNION ALL
-SELECT 'Réservations ASSIGNE', COUNT(*) FROM reservation WHERE statut = 'ASSIGNE'
-UNION ALL
-SELECT 'Réservations NON_ASSIGNE', COUNT(*) FROM reservation WHERE statut = 'NON_ASSIGNE';
+UNION ALL SELECT 'Distances', COUNT(*) FROM distance
+UNION ALL SELECT 'Vehicules', COUNT(*) FROM vehicule
+UNION ALL SELECT 'Parametres', COUNT(*) FROM parameters
+UNION ALL SELECT 'Reservations', COUNT(*) FROM reservation;
 
+SELECT '--- RÉSERVATIONS PAR DATE ET HEURE ---' AS info;
 
-SELECT 'Réservations (total)', COUNT(*) FROM reservation;
+SELECT DATE(arrival_date) AS date_depart,
+       arrival_date::time AS heure,
+       COUNT(*) AS nb_reservations,
+       SUM(passenger_nbr) AS total_passagers
+FROM reservation
+GROUP BY DATE(arrival_date), arrival_date::time
+ORDER BY date_depart, heure;
 
+SELECT '--- VÉHICULES ---' AS info;
+
+SELECT reference, nb_place, type_carburant FROM vehicule ORDER BY nb_place, type_carburant;
 
 --   \c postgres
 --   drop database hotel_reservation ;
