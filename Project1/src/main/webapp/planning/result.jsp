@@ -1,247 +1,457 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
 <%@ page import="java.util.*" %>
 <%@ page import="model.Attribution" %>
+<%@ page import="model.TrajetCar" %>
 <%@ page import="model.Reservation" %>
 <%@ page import="java.time.format.DateTimeFormatter" %>
 <%@ page import="java.math.BigDecimal" %>
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Planning d'attribution - Résultat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planning d'attribution — Véhicules</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --ink:        #1a1a1a;
+            --ink-light:  #6b6b6b;
+            --ink-faint:  #a8a8a8;
+            --paper:      #fafaf8;
+            --surface:    #ffffff;
+            --border:     #e8e6e1;
+            --border-soft:#f0ede8;
+            --accent:     #2c4a3e;
+            --accent-dim: #e8eeec;
+            --warn:       #8b3a3a;
+            --warn-dim:   #f5eaea;
+            --gold:       #b5872a;
+            --gold-dim:   #fdf6e8;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
+            font-family: 'DM Sans', sans-serif;
+            font-weight: 400;
+            background-color: var(--paper);
+            color: var(--ink);
+            min-height: 100vh;
+            line-height: 1.6;
         }
-        .container {
-            max-width: 1200px;
+
+        /* ── HEADER ── */
+        .page-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 32px 48px 28px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            backdrop-filter: blur(8px);
+        }
+        .header-inner {
+            max-width: 1280px;
             margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1, h2 {
-            color: #333;
-            text-align: center;
-        }
-        h2 {
-            font-size: 1.2em;
-            margin-top: 30px;
-        }
-        .date-info {
-            text-align: center;
-            font-size: 1.1em;
-            color: #555;
-            margin-bottom: 20px;
-        }
-        .controls {
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            justify-content: center;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 24px;
         }
+        .header-title-group {}
+        .header-eyebrow {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 6px;
+        }
+        .header-title {
+            font-family: 'DM Serif Display', serif;
+            font-size: 28px;
+            font-weight: 400;
+            color: var(--ink);
+            line-height: 1.2;
+        }
+        .header-date {
+            font-size: 13px;
+            color: var(--ink-light);
+            margin-top: 4px;
+        }
+        .header-date strong { color: var(--ink); font-weight: 500; }
+        .header-actions { display: flex; gap: 10px; flex-shrink: 0; }
         .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 9px 18px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
             cursor: pointer;
-            font-weight: bold;
             text-decoration: none;
-            display: inline-block;
+            transition: all .18s ease;
+            white-space: nowrap;
         }
-        .btn-back {
-            background-color: #2196F3;
-            color: white;
+        .btn-outline {
+            background: transparent;
+            color: var(--ink-light);
         }
-        .btn-back:hover {
-            background-color: #0b7dda;
+        .btn-outline:hover {
+            background: var(--surface);
+            color: var(--ink);
+            border-color: var(--ink-faint);
         }
-        .btn-refresh {
-            background-color: #4CAF50;
-            color: white;
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
         }
-        .btn-refresh:hover {
-            background-color: #45a049;
+        .btn-primary:hover {
+            background: #223d32;
+            border-color: #223d32;
         }
+        .btn-icon { font-size: 14px; opacity: .75; }
+
+        /* ── MAIN LAYOUT ── */
+        .main {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 40px 48px 80px;
+        }
+
+        /* ── ALERT ── */
         .alert {
-            padding: 15px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 18px;
+            border-radius: 8px;
+            font-size: 13.5px;
+            margin-bottom: 32px;
+            border: 1px solid;
+        }
+        .alert-error { background: var(--warn-dim); color: var(--warn); border-color: #e8c0c0; }
+        .alert-info  { background: var(--accent-dim); color: var(--accent); border-color: #c6d8d2; }
+        .alert-icon  { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+        /* ── KPI STRIP ── */
+        .kpi-strip {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 48px;
+        }
+        .kpi-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 22px 24px;
+            position: relative;
+            overflow: hidden;
+            transition: box-shadow .2s;
+        }
+        .kpi-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.06); }
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: var(--border);
+        }
+        .kpi-card.green::before  { background: var(--accent); }
+        .kpi-card.red::before    { background: var(--warn); }
+        .kpi-card.gold::before   { background: var(--gold); }
+        .kpi-card.neutral::before { background: var(--ink); }
+        .kpi-value {
+            font-family: 'DM Serif Display', serif;
+            font-size: 36px;
+            line-height: 1;
+            margin-bottom: 6px;
+            color: var(--ink);
+        }
+        .kpi-card.green .kpi-value  { color: var(--accent); }
+        .kpi-card.red .kpi-value    { color: var(--warn); }
+        .kpi-card.gold .kpi-value   { color: var(--gold); }
+        .kpi-label {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--ink-faint);
+        }
+
+        /* ── SECTION HEADING ── */
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             margin-bottom: 20px;
-            border-radius: 4px;
         }
-        .alert-success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+        .section-title {
+            font-family: 'DM Serif Display', serif;
+            font-size: 20px;
+            font-weight: 400;
+            color: var(--ink);
         }
-        .alert-error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+        .section-pill {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: .06em;
+            text-transform: uppercase;
         }
-        .alert-info {
-            background-color: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
+        .pill-green { background: var(--accent-dim); color: var(--accent); }
+        .pill-red   { background: var(--warn-dim);   color: var(--warn); }
+        .section-divider {
+            height: 1px;
+            background: var(--border);
+            margin-bottom: 20px;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
+
+        /* ── TABLE ── */
+        .table-wrap {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 48px;
         }
-        th {
-            background-color: #4CAF50;
-            color: white;
-            padding: 12px;
+        table { width: 100%; border-collapse: collapse; }
+        thead tr {
+            background: var(--ink);
+            color: #fff;
+        }
+        thead th {
+            padding: 13px 16px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: .1em;
+            text-transform: uppercase;
             text-align: left;
+            white-space: nowrap;
+        }
+        tbody tr.row-main {
+            border-bottom: 1px solid var(--border-soft);
+            transition: background .15s;
+        }
+        tbody tr.row-main:hover { background: #f7f6f3; }
+        tbody tr.row-detail {
+            background: var(--border-soft);
+            border-bottom: 1px solid var(--border);
+        }
+        tbody tr.row-detail td {
+            padding: 10px 16px 14px 40px;
+            font-size: 12.5px;
+            color: var(--ink-light);
+            border-top: none;
         }
         td {
-            padding: 10px 12px;
-            border-bottom: 1px solid #ddd;
+            padding: 14px 16px;
+            font-size: 13.5px;
+            vertical-align: top;
         }
-        tr:hover {
-            background-color: #f5f5f5;
+        .vehicle-ref {
+            font-weight: 600;
+            color: var(--ink);
+            font-size: 14px;
         }
-        .empty-message {
-            text-align: center;
-            padding: 30px;
-            color: #888;
+        .vehicle-meta {
+            font-size: 11.5px;
+            color: var(--ink-faint);
+            margin-top: 2px;
         }
-        .section-unassigned {
-            margin-top: 40px;
-            border-top: 2px solid #f44336;
-            padding-top: 20px;
+        .resa-line { color: var(--ink); font-size: 13px; }
+        .resa-line + .resa-line { margin-top: 4px; }
+        .grouped-note {
+            display: inline-block;
+            margin-top: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--gold);
+            background: var(--gold-dim);
+            padding: 2px 8px;
+            border-radius: 4px;
         }
-        .section-unassigned h2 {
-            color: #f44336;
+        .capacity-bar-wrap { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+        .capacity-bar {
+            flex: 1; height: 4px; background: var(--border);
+            border-radius: 2px; overflow: hidden;
         }
-        .section-unassigned th {
-            background-color: #f44336;
-        }
+        .capacity-bar-fill { height: 100%; border-radius: 2px; }
+        .cap-ok   { background: var(--accent); }
+        .cap-full { background: var(--warn); }
+        .capacity-text { font-size: 12px; color: var(--ink-light); white-space: nowrap; }
+        .time-main { font-weight: 500; font-size: 13.5px; }
+        .time-date { font-size: 11.5px; color: var(--ink-faint); }
+
+        /* badges */
         .badge {
             display: inline-block;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: bold;
-            color: white;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 10.5px;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
         }
-        .badge-assigne {
-            background-color: #4CAF50;
+        .badge-assigned   { background: var(--accent-dim); color: var(--accent); }
+        .badge-unassigned { background: var(--warn-dim);   color: var(--warn); }
+
+        /* traject detail rows */
+        .traject-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+        .traject-item {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 12px; color: var(--ink-light);
         }
-        .badge-non-assigne {
-            background-color: #f44336;
+        .traject-num {
+            width: 18px; height: 18px; border-radius: 50%;
+            background: var(--border); color: var(--ink-faint);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700; flex-shrink: 0;
         }
-        .stats {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            margin-bottom: 20px;
+        .traject-arrow { color: var(--ink-faint); font-size: 10px; }
+        .traject-km {
+            margin-left: auto;
+            font-size: 11.5px;
+            background: var(--border-soft);
+            padding: 2px 7px;
+            border-radius: 3px;
+            white-space: nowrap;
+            color: var(--ink-light);
         }
-        .stat-box {
-            background: #f9f9f9;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 15px 25px;
+        .traject-totals {
+            margin-top: 8px;
+            display: flex; gap: 12px;
+        }
+        .traject-total-tag {
+            font-size: 11.5px;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 4px;
+            background: var(--accent-dim);
+            color: var(--accent);
+        }
+
+        /* empty states */
+        .empty-state {
+            padding: 48px 24px;
             text-align: center;
+            color: var(--ink-faint);
         }
-        .stat-box .number {
-            font-size: 24px;
-            font-weight: bold;
-            display: block;
-        }
-        .stat-box .label {
-            font-size: 13px;
-            color: #666;
-        }
-        .stat-green .number { color: #4CAF50; }
-        .stat-red .number { color: #f44336; }
-        .stat-blue .number { color: #2196F3; }
-        .info-note {
-            text-align: center;
-            font-size: 12px;
-            color: #999;
-            margin-top: 5px;
-            font-style: italic;
+        .empty-state-icon { font-size: 32px; margin-bottom: 12px; }
+        .empty-state-text { font-size: 14px; }
+
+        /* unassigned section */
+        .section-unassigned { margin-top: 8px; }
+        .section-unassigned thead tr { background: var(--warn); }
+
+        /* responsive */
+        @media (max-width: 900px) {
+            .page-header { padding: 20px 24px 16px; }
+            .main { padding: 24px 20px 60px; }
+            .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+            .header-inner { flex-direction: column; align-items: flex-start; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Planning d'attribution des Véhicules</h1>
 
-        <%
-            String selectedDate = (String) request.getAttribute("selectedDate");
-            String error = (String) request.getAttribute("error");
-            List<Attribution> attributions = (List<Attribution>) request.getAttribute("attributions");
-            List<Reservation> reservationsNonAssignees = (List<Reservation>) request.getAttribute("reservationsNonAssignees");
-            DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+<%
+    String selectedDate = (String) request.getAttribute("selectedDate");
+    String error = (String) request.getAttribute("error");
+    List<Attribution> attributions = (List<Attribution>) request.getAttribute("attributions");
+    List<Reservation> reservationsNonAssignees = (List<Reservation>) request.getAttribute("reservationsNonAssignees");
+    DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
-            int nbAssigned = 0;
-            if (attributions != null) {
-                for (Attribution a : attributions) {
-                    nbAssigned += a.getReservations().size();
-                }
-            }
-            int nbUnassigned = (reservationsNonAssignees != null) ? reservationsNonAssignees.size() : 0;
-            int nbGroupes = (attributions != null) ? attributions.size() : 0;
-        %>
+    int nbAssigned = 0;
+    if (attributions != null) {
+        for (Attribution a : attributions) {
+            nbAssigned += a.getReservations().size();
+        }
+    }
+    int nbUnassigned = (reservationsNonAssignees != null) ? reservationsNonAssignees.size() : 0;
+    int nbGroupes = (attributions != null) ? attributions.size() : 0;
+%>
 
-        <% if (selectedDate != null) { %>
-            <div class="date-info">Date sélectionnée : <strong><%= selectedDate %></strong></div>
-        <% } %>
-
-        <% if (error != null) { %>
-            <div class="alert alert-error"><%= error %></div>
-        <% } %>
-
-        <div class="controls">
-            <a href="<%= request.getContextPath() %>/planning/form" class="btn btn-back">← Changer de date</a>
+<!-- ══════════════ HEADER ══════════════ -->
+<header class="page-header">
+    <div class="header-inner">
+        <div class="header-title-group">
+            <div class="header-eyebrow">Gestion de flotte</div>
+            <h1 class="header-title">Planning d'attribution</h1>
             <% if (selectedDate != null) { %>
-                <a href="<%= request.getContextPath() %>/planning/result?date=<%= selectedDate %>" class="btn btn-refresh">↻ Rafraîchir</a>
+                <div class="header-date">Date sélectionnée : <strong><%= selectedDate %></strong></div>
             <% } %>
         </div>
-
-        <!-- Statistiques -->
-        <div class="stats">
-            <div class="stat-box stat-blue">
-                <span class="number"><%= nbAssigned + nbUnassigned %></span>
-                <span class="label">Total réservations</span>
-            </div>
-            <div class="stat-box stat-green">
-                <span class="number"><%= nbAssigned %></span>
-                <span class="label">Réservations assignées</span>
-            </div>
-            <div class="stat-box stat-red">
-                <span class="number"><%= nbUnassigned %></span>
-                <span class="label">Non assignées</span>
-            </div>
-            <div class="stat-box" style="border-color: #9C27B0;">
-                <span class="number" style="color: #9C27B0;"><%= nbGroupes %></span>
-                <span class="label">Véhicules utilisés</span>
-            </div>
+        <div class="header-actions">
+            <a href="<%= request.getContextPath() %>/planning/form" class="btn btn-outline">
+                <span class="btn-icon">←</span> Changer de date
+            </a>
+            <% if (selectedDate != null) { %>
+                <a href="<%= request.getContextPath() %>/planning/result?date=<%= selectedDate %>" class="btn btn-primary">
+                    <span class="btn-icon">↻</span> Rafraîchir
+                </a>
+            <% } %>
         </div>
+    </div>
+</header>
 
-        <!-- ========================================== -->
-        <!-- TABLEAU PLANNING : ATTRIBUTIONS            -->
-        <!-- ========================================== -->
+<!-- ══════════════ MAIN ══════════════ -->
+<main class="main">
 
-        <h2>Attributions de véhicules</h2>
+    <% if (error != null) { %>
+        <div class="alert alert-error">
+            <span class="alert-icon">⚠</span>
+            <%= error %>
+        </div>
+    <% } %>
 
-        <% if (attributions != null && !attributions.isEmpty()) { %>
+    <!-- KPI STRIP -->
+    <div class="kpi-strip">
+        <div class="kpi-card neutral">
+            <div class="kpi-value"><%= nbAssigned + nbUnassigned %></div>
+            <div class="kpi-label">Réservations totales</div>
+        </div>
+        <div class="kpi-card green">
+            <div class="kpi-value"><%= nbAssigned %></div>
+            <div class="kpi-label">Assignées</div>
+        </div>
+        <div class="kpi-card red">
+            <div class="kpi-value"><%= nbUnassigned %></div>
+            <div class="kpi-label">Non assignées</div>
+        </div>
+        <div class="kpi-card gold">
+            <div class="kpi-value"><%= nbGroupes %></div>
+            <div class="kpi-label">Véhicules utilisés</div>
+        </div>
+    </div>
+
+    <!-- ══ SECTION : ATTRIBUTIONS ══ -->
+    <div class="section-header">
+        <h2 class="section-title">Attributions de véhicules</h2>
+        <span class="section-pill pill-green"><%= nbGroupes %> véhicule<%= nbGroupes > 1 ? "s" : "" %></span>
+    </div>
+    <div class="section-divider"></div>
+
+    <% if (attributions != null && !attributions.isEmpty()) { %>
+        <div class="table-wrap">
             <table>
                 <thead>
                     <tr>
                         <th>Véhicule</th>
                         <th>Réservation(s)</th>
-                        <th>Lieu départ</th>
-                        <th>Lieu(x) destination</th>
-                        <th>Passagers</th>
-                        <th>Heure départ</th>
-                        <th>Heure retour</th>
+                        <th>Départ</th>
+                        <th>Destination(s)</th>
+                        <th>Capacité</th>
+                        <th>Départ</th>
+                        <th>Retour</th>
                         <th>Statut</th>
                     </tr>
                 </thead>
@@ -250,116 +460,211 @@
                         List<Reservation> grouped = attr.getReservations();
                         int totalPass = attr.getTotalPassengers();
                         int placesRestantes = attr.getPlacesRestantes();
+                        int totalPlaces = attr.getVehicule() != null ? attr.getVehicule().getNbPlace() : 1;
+                        double fillPct = totalPlaces > 0 ? (double) totalPass / totalPlaces * 100 : 0;
+                        List<TrajetCar> trajects = attr.getDetailTraject();
                     %>
-                        <tr>
-                            <td>
-                                <strong><%= attr.getVehicule() != null ? attr.getVehicule().getReference() : "-" %></strong>
-                                <br>
-                                <small>
-                                    <%= attr.getVehicule() != null ? attr.getVehicule().getNbPlace() + " places" : "" %>
-                                    <%
-                                        if (attr.getVehicule() != null && attr.getVehicule().getTypeCarburant() != null) {
-                                            String typeCarb = attr.getVehicule().getTypeCarburant().name();
-                                            String carbLabel = "";
-                                            switch(typeCarb) {
-                                                case "D": carbLabel = "Diesel"; break;
-                                                case "Es": carbLabel = "Essence"; break;
-                                                case "H": carbLabel = "Hybride"; break;
-                                                case "El": carbLabel = "Électrique"; break;
-                                                default: carbLabel = typeCarb;
-                                            }
-                                    %>
-                                        - <%= carbLabel %>
-                                    <% } %>
-                                </small>
-                            </td>
-                            <td>
-                                <% for (int i = 0; i < grouped.size(); i++) {
-                                    Reservation r = grouped.get(i);
+                    <!-- MAIN ROW -->
+                    <tr class="row-main">
+                        <!-- Véhicule -->
+                        <td>
+                            <div class="vehicle-ref">
+                                <%= attr.getVehicule() != null ? attr.getVehicule().getReference() : "—" %>
+                            </div>
+                            <div class="vehicle-meta">
+                                <%= attr.getVehicule() != null ? attr.getVehicule().getNbPlace() + " places" : "" %>
+                                <%
+                                    if (attr.getVehicule() != null && attr.getVehicule().getTypeCarburant() != null) {
+                                        String tc = attr.getVehicule().getTypeCarburant().name();
+                                        String cl = "";
+                                        switch(tc) {
+                                            case "D":  cl = "· Diesel";    break;
+                                            case "Es": cl = "· Essence";   break;
+                                            case "H":  cl = "· Hybride";   break;
+                                            case "El": cl = "· Électrique"; break;
+                                            default:   cl = "· " + tc;
+                                        }
                                 %>
-                                    #<%= r.getId() %> - <%= r.getCustomerId() %>
-                                    (<%= r.getPassengerNbr() %> pass.)
-                                    <% if (i < grouped.size() - 1) { %><br><% } %>
+                                    <%= cl %>
                                 <% } %>
-                                <% if (grouped.size() > 1) { %>
-                                    <br><small style="color: #9C27B0; font-weight: bold;">
-                                        ⇒ <%= grouped.size() %> réservations regroupées
-                                    </small>
-                                <% } %>
-                            </td>
-                            <td><%= attr.getReservation().getLieuDepart() != null ? attr.getReservation().getLieuDepart().getLibelle() : "-" %></td>
-                            <td>
-                                <% for (int i = 0; i < grouped.size(); i++) {
-                                    Reservation r = grouped.get(i);
+                            </div>
+                        </td>
+
+                        <!-- Réservations -->
+                        <td>
+                            <% for (Reservation r : grouped) { %>
+                                <div class="resa-line">
+                                    <span style="font-weight:600;">#<%= r.getId() %></span>
+                                    &ensp;<span style="color:var(--ink-light)"><%= r.getCustomerId() %></span>
+                                    &ensp;<span style="color:var(--ink-faint);font-size:12px;"><%= r.getPassengerNbr() %> pass.</span>
+                                </div>
+                            <% } %>
+                            <% if (grouped.size() > 1) { %>
+                                <span class="grouped-note">↦ <%= grouped.size() %> groupées</span>
+                            <% } %>
+                        </td>
+
+                        <!-- Départ -->
+                        <td>
+                            <%= attr.getReservation().getLieuDepart() != null
+                                ? attr.getReservation().getLieuDepart().getLibelle() : "—" %>
+                        </td>
+
+                        <!-- Destinations -->
+                        <td>
+                            <% for (int i = 0; i < grouped.size(); i++) {
+                                Reservation r = grouped.get(i);
+                            %>
+                                <div class="resa-line">
+                                    <%= r.getLieuDestination() != null ? r.getLieuDestination().getLibelle() : "—" %>
+                                </div>
+                            <% } %>
+                        </td>
+
+                        <!-- Capacité -->
+                        <td style="min-width:120px;">
+                            <div style="font-weight:600; font-size:14px;">
+                                <%= totalPass %><span style="color:var(--ink-faint); font-weight:400;"> / <%= totalPlaces %></span>
+                            </div>
+                            <div class="capacity-bar-wrap">
+                                <div class="capacity-bar">
+                                    <div class="capacity-bar-fill <%= placesRestantes == 0 ? "cap-full" : "cap-ok" %>"
+                                         style="width:<%= Math.min(fillPct, 100) %>%"></div>
+                                </div>
+                                <span class="capacity-text"><%= placesRestantes %> libre<%= placesRestantes > 1 ? "s" : "" %></span>
+                            </div>
+                        </td>
+
+                        <!-- Heure départ -->
+                        <td>
+                            <% if (attr.getDateHeureDepart() != null) {
+                                String[] dtParts = attr.getDateHeureDepart().format(dtf).split(" ");
+                            %>
+                                <div class="time-main"><%= dtParts.length > 1 ? dtParts[1] : dtParts[0] %></div>
+                                <div class="time-date"><%= dtParts[0] %></div>
+                            <% } else { %>—<% } %>
+                        </td>
+
+                        <!-- Heure retour -->
+                        <td>
+                            <% if (attr.getDateHeureRetour() != null) {
+                                String[] dtParts = attr.getDateHeureRetour().format(dtf).split(" ");
+                            %>
+                                <div class="time-main"><%= dtParts.length > 1 ? dtParts[1] : dtParts[0] %></div>
+                                <div class="time-date"><%= dtParts[0] %></div>
+                            <% } else { %>—<% } %>
+                        </td>
+
+                        <!-- Statut -->
+                        <td><span class="badge badge-assigned">Assigné</span></td>
+                    </tr>
+
+                    <!-- DETAIL TRAJECT ROW -->
+                    <tr class="row-detail">
+                        <td colspan="8">
+                            <%
+                                double sumDurre = 0.0;
+                                double sumDistance = 0.0;
+                                for (TrajetCar t : trajects) {
+                                    sumDurre += t.getDurre();
+                                    sumDistance += t.getDistance();
+                                }
+                            %>
+                            <ul class="traject-list">
+                                <% for (int i = 0; i < trajects.size(); i++) {
+                                    TrajetCar t = trajects.get(i);
                                 %>
-                                    <%= r.getLieuDestination() != null ? r.getLieuDestination().getLibelle() : "-" %>
-                                    <% if (i < grouped.size() - 1) { %><br><% } %>
+                                    <li class="traject-item">
+                                        <span class="traject-num"><%= i + 1 %></span>
+                                        <span><%= t.getReservationFrom().getLibelle() %></span>
+                                        <span class="traject-arrow">→</span>
+                                        <span><%= t.getReservationTo().getLibelle() %></span>
+                                        <span class="traject-km">
+                                            <%= t.getDistance() %> km &nbsp;·&nbsp; <%= (int)(t.getDurre() * 60) %> min
+                                        </span>
+                                    </li>
                                 <% } %>
-                            </td>
-                            <td>
-                                <strong><%= totalPass %></strong> / <%= attr.getVehicule() != null ? attr.getVehicule().getNbPlace() : "?" %>
-                                <br>
-                                <small style="color: <%= placesRestantes > 0 ? "#4CAF50" : "#f44336" %>;">
-                                    <%= placesRestantes %> place(s) restante(s)
-                                </small>
-                            </td>
-                            <td><%= attr.getDateHeureDepart() != null ? attr.getDateHeureDepart().format(dtf) : "-" %></td>
-                            <td><%= attr.getDateHeureRetour() != null ? attr.getDateHeureRetour().format(dtf) : "-" %></td>
-                            <td><span class="badge badge-assigne">ASSIGNÉ</span></td>
-                        </tr>
+                            </ul>
+                            <% if (trajects.size() > 1) { %>
+                                <div class="traject-totals">
+                                    <span class="traject-total-tag">Ʃ <%= sumDistance %> km</span>
+                                    <span class="traject-total-tag">Ʃ <%= (int)(sumDurre * 60) %> min</span>
+                                </div>
+                            <% } %>
+                        </td>
+                    </tr>
+
                     <% } %>
                 </tbody>
             </table>
-        <% } else { %>
-            <div class="empty-message">
-                <p>Aucune attribution pour cette date.</p>
+        </div>
+    <% } else { %>
+        <div class="table-wrap">
+            <div class="empty-state">
+                <div class="empty-state-icon">📋</div>
+                <div class="empty-state-text">Aucune attribution pour cette date.</div>
             </div>
-        <% } %>
+        </div>
+    <% } %>
 
-        <!-- ========================================== -->
-        <!-- RÉSERVATIONS NON ASSIGNÉES                 -->
-        <!-- ========================================== -->
+    <!-- ══ SECTION : NON ASSIGNÉES ══ -->
+    <div class="section-unassigned">
+        <div class="section-header">
+            <h2 class="section-title">Réservations non assignées</h2>
+            <span class="section-pill pill-red"><%= nbUnassigned %> réservation<%= nbUnassigned > 1 ? "s" : "" %></span>
+        </div>
+        <div class="section-divider"></div>
 
-        <div class="section-unassigned">
-            <h2>Réservations non assignées</h2>
-
-            <% if (reservationsNonAssignees != null && !reservationsNonAssignees.isEmpty()) { %>
-                <div class="alert alert-info">
-                    Ces réservations n'ont pas pu être assignées (aucun véhicule disponible, pas assez de places, conflit horaire ou distance manquante).
-                </div>
+        <% if (reservationsNonAssignees != null && !reservationsNonAssignees.isEmpty()) { %>
+            <div class="alert alert-info">
+                <span class="alert-icon">ℹ</span>
+                Ces réservations n'ont pas pu être assignées — aucun véhicule disponible, places insuffisantes, conflit horaire ou distance manquante.
+            </div>
+            <div class="table-wrap section-unassigned">
                 <table>
                     <thead>
                         <tr>
                             <th>Réservation</th>
                             <th>Client</th>
-                            <th>Nb passagers</th>
-                            <th>Lieu départ</th>
-                            <th>Lieu destination</th>
-                            <th>Date arrivée</th>
+                            <th>Passagers</th>
+                            <th>Départ</th>
+                            <th>Destination</th>
+                            <th>Date d'arrivée</th>
                             <th>Statut</th>
                         </tr>
                     </thead>
                     <tbody>
                         <% for (Reservation resa : reservationsNonAssignees) { %>
-                            <tr>
-                                <td>#<%= resa.getId() %></td>
+                            <tr class="row-main">
+                                <td><span style="font-weight:600;">#<%= resa.getId() %></span></td>
                                 <td><%= resa.getCustomerId() %></td>
                                 <td><%= resa.getPassengerNbr() %></td>
-                                <td><%= resa.getLieuDepart() != null ? resa.getLieuDepart().getLibelle() : "-" %></td>
-                                <td><%= resa.getLieuDestination() != null ? resa.getLieuDestination().getLibelle() : "-" %></td>
-                                <td><%= resa.getArrivalDate() != null ? resa.getArrivalDate().format(dtf) : "-" %></td>
-                                <td><span class="badge badge-non-assigne">NON ASSIGNÉ</span></td>
+                                <td><%= resa.getLieuDepart() != null ? resa.getLieuDepart().getLibelle() : "—" %></td>
+                                <td><%= resa.getLieuDestination() != null ? resa.getLieuDestination().getLibelle() : "—" %></td>
+                                <td>
+                                    <% if (resa.getArrivalDate() != null) {
+                                        String[] dtParts = resa.getArrivalDate().format(dtf).split(" ");
+                                    %>
+                                        <div class="time-main"><%= dtParts.length > 1 ? dtParts[1] : dtParts[0] %></div>
+                                        <div class="time-date"><%= dtParts[0] %></div>
+                                    <% } else { %>—<% } %>
+                                </td>
+                                <td><span class="badge badge-unassigned">Non assigné</span></td>
                             </tr>
                         <% } %>
                     </tbody>
                 </table>
-            <% } else { %>
-                <div class="empty-message">
-                    <p>Toutes les réservations ont été assignées avec succès !</p>
+            </div>
+        <% } else { %>
+            <div class="table-wrap">
+                <div class="empty-state">
+                    <div class="empty-state-icon">✓</div>
+                    <div class="empty-state-text">Toutes les réservations ont été assignées avec succès.</div>
                 </div>
-            <% } %>
-        </div>
-
+            </div>
+        <% } %>
     </div>
+
+</main>
 </body>
 </html>
