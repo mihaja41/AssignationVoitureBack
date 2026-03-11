@@ -1,0 +1,195 @@
+NOUVELLE FONCTIONNALITÉ : REGROUPEMENT AVEC TEMPS D’ATTENTE
+
+Objectif :
+Améliorer l’algorithme de gestion des transports depuis l’aéroport en introduisant une "fenêtre de regroupement" basée sur un temps d’attente.
+
+Le temps d’attente est déjà stocké dans la table PARAMETERS et exprimé en minutes.
+
+Exemple :
+temps_attente = 30 minutes
+
+---
+
+PRINCIPE GLOBAL
+
+Avant :
+Le regroupement était possible uniquement si les réservations avaient exactement la même heure d’arrivée.
+
+Maintenant :
+Les réservations peuvent être regroupées si leur heure d’arrivée se trouve dans une fenêtre de temps définie.
+
+Fenêtre de regroupement :
+
+début_fenetre = première arrival_date
+fin_fenetre = première arrival_date + temps_attente
+
+Toutes les réservations dont arrival_date est dans cet intervalle sont traitées ensemble.
+
+Exemple :
+
+arrival_date :
+08:10
+08:20
+08:25
+
+temps_attente :
+30 minutes
+
+Fenêtre :
+
+08:10 → 08:40
+
+Ces 3 réservations sont donc dans la même fenêtre.
+
+---
+
+RÈGLE IMPORTANTE : HEURE DE DÉPART DES VÉHICULES
+
+Tous les véhicules assignés dans une même fenêtre partent à la même heure.
+
+Cette heure correspond à :
+
+heure_depart = MAX(arrival_date) de la fenêtre
+
+Exemple :
+
+arrivées :
+08:10
+08:20
+08:25
+
+heure_depart = 08:25
+
+Même si les clients ne sont pas dans le même véhicule,
+tous les véhicules partiront à 08:25.
+
+---
+
+LES AUTRES RÈGLES EXISTANTES RESTENT IDENTIQUES
+
+Lors de l’assignation des véhicules :
+
+1. Trier les réservations par nombre de passagers décroissant
+
+2. Choisir le véhicule avec le plus petit écart :
+
+écart = nb_places - nombre_passagers
+
+3. Si égalité :
+   priorité carburant
+
+Diesel > Essence > Hybride > Electrique
+
+4. Si égalité complète :
+   choix aléatoire
+
+5. Regroupement possible si :
+
+placeRestante >= passagers
+
+---
+
+---
+
+RÉPARTITION DES TÂCHES
+
+DEVELOPER 1
+GESTION DES FENÊTRES DE REGROUPEMENT
+
+Objectif :
+Créer le système de fenêtre de regroupement basé sur le temps d’attente.
+
+Tâches :
+
+1. Lire le paramètre temps_attente dans la table PARAMETERS
+
+2. Trier toutes les réservations par arrival_date
+
+ORDER BY arrival_date ASC
+
+3. Construire les fenêtres de regroupement
+
+Algorithme :
+
+prendre la première réservation
+
+start_window = arrival_date
+end_window = arrival_date + temps_attente
+
+sélectionner toutes les réservations telles que :
+
+arrival_date >= start_window
+arrival_date <= end_window
+
+ces réservations appartiennent à la même fenêtre
+
+4. Calculer l’heure de départ de la fenêtre
+
+heure_depart = MAX(arrival_date)
+
+5. Envoyer cette liste de réservations au module d’assignation des véhicules
+
+---
+
+DEVELOPER 2
+ASSIGNATION DES VÉHICULES DANS LA FENÊTRE
+
+Objectif :
+Attribuer les véhicules aux réservations présentes dans une même fenêtre.
+
+Tâches :
+
+1. Recevoir la liste des réservations de la fenêtre
+
+2. Trier les réservations par :
+
+passenger_nbr DESC
+
+3. Pour chaque réservation :
+
+chercher les véhicules disponibles
+
+4. Choisir le véhicule optimal :
+
+écart = nb_places - passenger_nbr
+
+choisir le plus petit écart positif
+
+5. Si égalité :
+
+priorité carburant
+
+Diesel > Essence > Hybride > Electrique
+
+6. Si encore égalité :
+
+choisir un véhicule aléatoirement
+
+7. Vérifier le regroupement
+
+placeRestante = nb_places - total_passagers
+
+si placeRestante >= passagers d’une autre réservation
+alors regrouper dans le même véhicule
+
+8. Une fois toutes les assignations terminées
+
+tous les véhicules reçoivent :
+
+heure_depart = heure_depart_de_la_fenêtre
+
+---
+
+RÉSULTAT ATTENDU
+
+Pour chaque fenêtre :
+
+* les réservations sont regroupées
+* les véhicules sont assignés
+* tous les véhicules partent à la même heure
+
+heure_depart = dernière arrivée dans la fenêtre
+
+---
+
+FIN DU DOCUMENT
