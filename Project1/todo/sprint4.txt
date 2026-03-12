@@ -122,3 +122,9 @@ Le véhicule part de l’aéroport et dépose les clients à leurs destinations.
 * Optimisation du trajet de dépose
 * dateHeureRetour correctement calculée
 
+
+
+
+
+
+ Raha misy client assigne dans le meme voiture ka mitovy lieu dia miara aterina 
