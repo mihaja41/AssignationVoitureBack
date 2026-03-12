@@ -3,3 +3,18 @@
 
 meme logique otran taloha 
 ny depart anle fiara dia ilay farany ilay reservation max regroupé 
+
+
+
+
+
+Principales améliorations
+Tri des réservations par nombre de passagers décroissant
+
+Recherche globale optimale qui teste toutes les combinaisons véhicule + regroupement
+
+Système de scoring pour évaluer objectivement les attributions
+
+Calcul précis des écarts de places (nbPlaces - passagers)
+
+Regroupement intelligent qui considère toutes les réservations compatibles

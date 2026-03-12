@@ -65,135 +65,220 @@ public class PlanningService {
      * Attribution STATIQUE (en mémoire uniquement, aucune modification en base).
      * Implémente le regroupement Sprint 4.
      */
-    public PlanningResult genererPlanning(LocalDateTime date) throws SQLException {
+   public PlanningResult genererPlanning(LocalDateTime date) throws SQLException {
+    // 1. Charger les paramètres
+    double vitesseMoyenne = parametreRepository.getVitesseMoyenne();
 
-        // 1. Charger les paramètres
-        double vitesseMoyenne = parametreRepository.getVitesseMoyenne(); // km/h
+    // 2. Récupérer toutes les réservations pour cette date
+    List<Reservation> reservations = reservationRepository.findByDate(date);
+    
+    if (reservations == null || reservations.isEmpty()) {
+        return new PlanningResult(new ArrayList<>(), new ArrayList<>());
+    }
 
-        // 2. Récupérer toutes les réservations pour cette date
-        List<Reservation> reservations = reservationRepository.findByDate(date);
+    // AMÉLIORATION 1: Trier par nombre de passagers DÉCROISSANT
+    List<Reservation> reservationsTriees = reservations.stream()
+            .sorted((r1, r2) -> Integer.compare(r2.getPassengerNbr(), r1.getPassengerNbr()))
+            .collect(Collectors.toList());
 
-        // Checking de la validiter de la reservation
-        if (reservations != null) {
-            List<Reservation> values = directionX(reservations);
+    List<Attribution> attributions = new ArrayList<>();
+    List<Reservation> nonAssignees = new ArrayList<>();
+    Set<Long> assignedIds = new HashSet<>();
 
-            // Liste des durees de chaque traject
-            List<TrajetCar> val = getDureTotalTrajet(values, vitesseMoyenne);
-
-            // for (TrajetCar trajetCar : val) {
-            //     System.out.println(trajetCar.toString());
-            // }
-
-            System.out.println(" ---------------------------------------------------");
-            // for (Reservation reserv : values) {
-            //     System.out.println(reserv.getId() + " - " + reserv.getLieuDepart().getLibelle() + " → "
-            //             + reserv.getLieuDestination().getLibelle());
-            // }
-
-            // 3. Attribution en mémoire
-            List<Attribution> attributions = new ArrayList<>();
-            List<Reservation> nonAssignees = new ArrayList<>();
-            Set<Long> assignedIds = new HashSet<>();
-
-            for (Reservation reservation : reservations) {
-                // Sauter si déjà assignée (regroupée dans un véhicule précédent)
-                if (assignedIds.contains(reservation.getId())) {
-                    continue;
-                }
-
-                // Calculer la distance aller simple
-                BigDecimal distanceAller = getDistanceAllerSimple(reservation);
-                if (distanceAller == null) {
-                    // Pas de distance trouvée → non assignable
-                    nonAssignees.add(reservation);
-                    continue;
-                }
-
-                BigDecimal distanceAllerRetour = distanceAller.multiply(BigDecimal.valueOf(2));
-
-                // dateHeureDepart = arrivalDate (le véhicule part à l'heure d'arrivée du
-                // client)
-                LocalDateTime dateHeureDepart = reservation.getArrivalDate();
-
-                // duree en heures = distanceAllerRetour / vitesseMoyenne
-                double dureeHeures = distanceAllerRetour.doubleValue() / vitesseMoyenne;
-                long dureeMinutes = Math.round(dureeHeures * 60);
-                LocalDateTime dateHeureRetour = dateHeureDepart.plusMinutes(dureeMinutes);
-
-                // Chercher le meilleur véhicule disponible
-                Vehicule choisi = attribuerVehiculeEnMemoire(reservation, attributions, dateHeureDepart);
-
-                if (choisi != null) {
-                    // Créer l'attribution
-                    Attribution attribution = new Attribution();
-                    attribution.setVehicule(choisi);
-                    attribution.setReservation(reservation); // backward compat
-                    attribution.addReservation(reservation); // liste regroupée
-             
-                    attribution.setStatut("ASSIGNE");
-
-                    assignedIds.add(reservation.getId());
-
-                    // ============================
-                    // REGROUPEMENT (Sprint 4 DEV1)
-                    // ============================
-                    int placesRestantes = choisi.getNbPlace() - reservation.getPassengerNbr();
-
-                    if (placesRestantes >= 1) {
-                        // Chercher d'autres réservations compatibles à regrouper
-                        for (Reservation autre : reservations) {
-                            if (placesRestantes < 1)
-                                break;
-                            if (assignedIds.contains(autre.getId()))
-                                continue;
-
-                            // Critères de compatibilité pour regroupement :
-                            // 1. Même date ET même heure de départ (arrivalDate identique)
-                            if (!autre.getArrivalDate().equals(reservation.getArrivalDate()))
-                                continue;
-                            // 2. Même lieu de départ (aéroport)
-                            if (autre.getLieuDepart() == null || reservation.getLieuDepart() == null)
-                                continue;
-                            if (!autre.getLieuDepart().getId().equals(reservation.getLieuDepart().getId()))
-                                continue;
-                            // 3. Nombre de passagers <= places restantes
-                            if (autre.getPassengerNbr() > placesRestantes)
-                                continue;
-
-                            // Compatible → regrouper dans le même véhicule
-                            attribution.addReservation(autre);
-                            assignedIds.add(autre.getId());
-                            placesRestantes -= autre.getPassengerNbr();
-                        }
-                    }
-                    List<TrajetCar> valx = getDureTotalTrajet( attribution.getReservations() , vitesseMoyenne);
-                     for (TrajetCar trajetCar : valx) {
-                            System.out.println(trajetCar.toString());
-                    }
-                    double  dureeTotal  =  getTotalDuree( valx  )   ; 
-                    double  distanceTotal  = getTotalDistance( valx  ) ; 
-                    
-                    attribution.setDetailTraject(valx )  ; 
-                    attribution.setDateHeureDepart(dateHeureDepart);
-                    attribution.setDistanceKm(distanceAller);
-                    attribution.setDistanceAllerRetourKm( BigDecimal.valueOf(distanceTotal) );
-                    attribution.setDateHeureRetour(dateHeureDepart.plusMinutes( (long) (dureeTotal*60) ));
-                    for (Reservation reserv : attribution.getReservations() ) {
-                        System.out.println(reserv.getId() + " - " + reserv.getLieuDepart().getLibelle() + " → "
-                                + reserv.getLieuDestination().getLibelle());
-                    }
-                    attributions.add(attribution);
-                } else {
-                    nonAssignees.add(reservation);
-                }
-            }
-            return new PlanningResult(attributions, nonAssignees);
-
-        } else {
-            System.out.println(" nulllllllllllll = 0 ");
+    // 3. Optimisation du parcours des réservations
+    for (Reservation reservation : reservationsTriees) {
+        if (assignedIds.contains(reservation.getId())) {
+            continue;
         }
+
+        // Vérifier la distance
+        BigDecimal distanceAller = getDistanceAllerSimple(reservation);
+        if (distanceAller == null) {
+            nonAssignees.add(reservation);
+            continue;
+        }
+
+        LocalDateTime dateHeureDepart = reservation.getArrivalDate();
+
+        // AMÉLIORATION 2: Recherche optimisée du véhicule
+        Attribution meilleureAttribution = trouverMeilleureAttributionAvecRegroupement(
+                reservation, reservationsTriees, assignedIds, attributions, dateHeureDepart, vitesseMoyenne);
+
+        if (meilleureAttribution != null) {
+            // Marquer toutes les réservations regroupées comme assignées
+            for (Reservation r : meilleureAttribution.getReservations()) {
+                assignedIds.add(r.getId());
+            }
+            
+            // Calculer les distances et durées pour le trajet regroupé
+            List<TrajetCar> trajets = getDureTotalTrajet(meilleureAttribution.getReservations(), vitesseMoyenne);
+            double dureeTotale = getTotalDuree(trajets);
+            double distanceTotale = getTotalDistance(trajets);
+            
+            meilleureAttribution.setDetailTraject(trajets);
+            meilleureAttribution.setDateHeureDepart(dateHeureDepart);
+            meilleureAttribution.setDistanceKm(distanceAller);
+            meilleureAttribution.setDistanceAllerRetourKm(BigDecimal.valueOf(distanceTotale));
+            meilleureAttribution.setDateHeureRetour(dateHeureDepart.plusMinutes((long) (dureeTotale * 60)));
+            
+            attributions.add(meilleureAttribution);
+        } else {
+            nonAssignees.add(reservation);
+        }
+    }
+
+    return new PlanningResult(attributions, nonAssignees);
+}
+
+/**
+ * AMÉLIORATION 3: Fonction optimisée qui trouve la meilleure combinaison
+ * de véhicule et de réservations à regrouper
+ */
+private Attribution trouverMeilleureAttributionAvecRegroupement(
+        Reservation reservationPrincipale,
+        List<Reservation> toutesReservations,
+        Set<Long> assignedIds,
+        List<Attribution> attributionsExistantes,
+        LocalDateTime dateHeureDepart,
+        double vitesseMoyenne) throws SQLException {
+    
+    // Chercher tous les véhicules disponibles avec assez de places
+    List<Vehicule> vehiculesDisponibles = vehiculeRepository.findAvailableVehicules(1); // Récupérer tous les véhicules
+    
+    // Filtrer par disponibilité horaire et par capacité minimale
+    vehiculesDisponibles = vehiculesDisponibles.stream()
+            .filter(v -> !hasConflitHoraire(v.getId(), dateHeureDepart, attributionsExistantes))
+            .filter(v -> v.getNbPlace() >= reservationPrincipale.getPassengerNbr())
+            .collect(Collectors.toList());
+    
+    if (vehiculesDisponibles.isEmpty()) {
         return null;
     }
+    
+    // Trouver les réservations compatibles pour le regroupement (même heure, même lieu départ)
+    List<Reservation> compatibles = trouverReservationsCompatibles(
+            reservationPrincipale, toutesReservations, assignedIds);
+    
+    Attribution meilleureAttribution = null;
+    int meilleurScore = Integer.MAX_VALUE; // Plus le score est bas, mieux c'est
+    
+    // Tester chaque véhicule disponible
+    for (Vehicule vehicule : vehiculesDisponibles) {
+        int placesDisponibles = vehicule.getNbPlace();
+        List<Reservation> reservationsGroupees = new ArrayList<>();
+        reservationsGroupees.add(reservationPrincipale);
+        placesDisponibles -= reservationPrincipale.getPassengerNbr();
+        
+        // Essayer d'ajouter d'autres réservations compatibles
+        for (Reservation compatible : compatibles) {
+            if (compatible.getPassengerNbr() <= placesDisponibles) {
+                reservationsGroupees.add(compatible);
+                placesDisponibles -= compatible.getPassengerNbr();
+            }
+        }
+        
+        // Calculer le score pour cette attribution
+        int score = evaluerAttribution(vehicule, reservationsGroupees);
+        
+        if (score < meilleurScore) {
+            meilleurScore = score;
+            
+            Attribution attribution = new Attribution();
+            attribution.setVehicule(vehicule);
+            attribution.setReservation(reservationPrincipale);
+            for (Reservation r : reservationsGroupees) {
+                attribution.addReservation(r);
+            }
+            attribution.setStatut("ASSIGNE");
+            
+            meilleureAttribution = attribution;
+        }
+    }
+    
+    return meilleureAttribution;
+}
+
+/**
+ * AMÉLIORATION 4: Trouver toutes les réservations compatibles pour regroupement
+ */
+private List<Reservation> trouverReservationsCompatibles(
+        Reservation reservationPrincipale,
+        List<Reservation> toutesReservations,
+        Set<Long> assignedIds) {
+    
+    return toutesReservations.stream()
+            .filter(r -> !assignedIds.contains(r.getId()))
+            .filter(r -> !r.getId().equals(reservationPrincipale.getId()))
+            .filter(r -> r.getArrivalDate().equals(reservationPrincipale.getArrivalDate()))
+            .filter(r -> r.getLieuDepart() != null && reservationPrincipale.getLieuDepart() != null)
+            .filter(r -> r.getLieuDepart().getId().equals(reservationPrincipale.getLieuDepart().getId()))
+            .sorted((r1, r2) -> Integer.compare(r2.getPassengerNbr(), r1.getPassengerNbr())) // Trier par taille décroissante
+            .collect(Collectors.toList());
+}
+
+/**
+ * AMÉLIORATION 5: Évaluation du score d'une attribution
+ * Score plus bas = meilleure attribution
+ */
+private int evaluerAttribution(Vehicule vehicule, List<Reservation> reservations) {
+    int totalPassagers = reservations.stream()
+            .mapToInt(Reservation::getPassengerNbr)
+            .sum();
+    
+    // Critère 1: Minimiser les places vides (pondération forte)
+    int placesVides = vehicule.getNbPlace() - totalPassagers;
+    int score = placesVides * 10;
+    
+    // Critère 2: Privilégier le Diesel (pondération moyenne)
+    if (vehicule.getTypeCarburant() != TypeCarburant.D) {
+        score += 5; // Pénalité pour non-Diesel
+    }
+    
+    // Critère 3: Maximiser le nombre de passagers transportés (bonus)
+    score -= totalPassagers; // Bonus pour transporter plus de monde
+    
+    return score;
+}
+
+/**
+ * AMÉLIORATION 6: Version améliorée de choisirVehicule avec calcul d'écart réel
+ */
+private Vehicule choisirVehiculeOptimise(List<Vehicule> disponibles, int passengerNbr) {
+    // Calculer l'écart pour chaque véhicule
+    Map<Vehicule, Integer> ecarts = new HashMap<>();
+    for (Vehicule v : disponibles) {
+        ecarts.put(v, v.getNbPlace() - passengerNbr);
+    }
+    
+    // Trouver l'écart minimum
+    int ecartMin = ecarts.values().stream()
+            .mapToInt(Integer::intValue)
+            .min()
+            .orElse(Integer.MAX_VALUE);
+    
+    // Garder les véhicules avec l'écart minimum
+    List<Vehicule> meilleurs = disponibles.stream()
+            .filter(v -> (v.getNbPlace() - passengerNbr) == ecartMin)
+            .collect(Collectors.toList());
+    
+    if (meilleurs.size() == 1) {
+        return meilleurs.get(0);
+    }
+    
+    // Priorité Diesel
+    List<Vehicule> diesels = meilleurs.stream()
+            .filter(v -> v.getTypeCarburant() == TypeCarburant.D)
+            .collect(Collectors.toList());
+    
+    if (!diesels.isEmpty()) {
+        Collections.shuffle(diesels);
+        return diesels.get(0);
+    }
+    
+    // Random parmi les meilleurs
+    Collections.shuffle(meilleurs);
+    return meilleurs.get(0);
+}
 
 
     public double getTotalDuree(List<TrajetCar> result ){
@@ -235,6 +320,10 @@ public class PlanningService {
 
     private double getDistanceLieu(Lieu lieuDepart, Lieu lieuDestination) throws SQLException {
         if (lieuDepart == null || lieuDestination == null) {
+            return 0.0;
+        }
+
+        if ( lieuDepart.getId() == lieuDestination.getId() ) {
             return 0.0;
         }
 
@@ -340,6 +429,7 @@ public class PlanningService {
         return reservationMin;
     }
 
+    // fonction
     private List<TrajetCar> getDureTotalTrajet(List<Reservation> reservations, double vitessMoyenne)
             throws SQLException {
         if (reservations == null) {

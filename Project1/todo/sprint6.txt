@@ -1,0 +1,8 @@
+
+1 - conderation du nombre de trajet 
+    - Considerena ny nombre de voyage effectuer par chaque voiture 
+    - Izay kely voyage n assi 
+
+supposition 
+depart 00h daholy 
+
