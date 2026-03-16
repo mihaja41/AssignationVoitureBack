@@ -31,27 +31,27 @@ import java.util.HashMap;
 /**
  * Service de planification et d'attribution automatique de véhicules.
  * 
- * Sprint 4 – Regroupement d'assignation :
+ * Sprint 5 – Regroupement avec temps d'attente :
  *
  * ALGORITHME :
- * 1. Récupérer toutes les réservations d'une date donnée
- * 2. Trier par nombre de passagers DÉCROISSANT (traiter le plus gros groupe en
- * premier)
- * 3. Pour chaque réservation non encore assignée :
- * a. Chercher les véhicules avec nb_places >= passengerNbr
- * b. Exclure véhicule si heure_retour > heure_depart (pas encore revenu)
- * c. Choisir le véhicule :
- * - minimiser (nb_places - passengerNbr) → moins de places vides
- * - si égalité → priorité Diesel ('D')
- * - si encore égalité → random
- * d. REGROUPEMENT : si places restantes >= 1, chercher d'autres réservations
- * compatibles :
- * - même date et heure de départ
- * - même lieu de départ (aéroport)
- * - passengerNbr <= places restantes
- * - non encore assignées
- * Les assigner au même véhicule, recalculer places restantes, répéter.
- * 4. Retourner les attributions et les réservations non assignées.
+ * 1. Récupérer toutes les réservations d'une date donnée, triées par arrival_date ASC
+ * 2. Pour chaque première réservation non traitée, créer une FENÊTRE DE REGROUPEMENT :
+ *    - start_time = arrival_date
+ *    - end_time = arrival_date + temps_attente (paramètre en minutes)
+ * 3. Collecter toutes les réservations dans cette fenêtre :
+ *    - arrival_date >= start_time AND arrival_date <= end_time
+ * 4. heure_depart = MAX(arrival_date) de la fenêtre (tous véhicules partent ensemble)
+ * 5. Trier les réservations de la fenêtre par passagers DÉCROISSANT
+ * 6. Pour chaque réservation de la fenêtre :
+ *    a. Chercher véhicules avec nb_places >= passengerNbr
+ *    b. Exclure si heure_retour > heure_depart
+ *    c. Choisir : minimiser écart places, priorité Diesel, sinon random
+ *    d. REGROUPEMENT INTRA-FENÊTRE : si places restantes >= 1, ajouter d'autres
+ *       réservations de la même fenêtre :
+ *       - même lieu de départ
+ *       - passengerNbr <= places_restantes
+ * 7. heure_retour = heure_depart + temps_trajet
+ * 8. Répéter avec la prochaine fenêtre (réservations non encore traitées)
  */
 public class PlanningService {
 
@@ -63,7 +63,7 @@ public class PlanningService {
     /**
      * Générer le planning pour une date donnée.
      * Attribution STATIQUE (en mémoire uniquement, aucune modification en base).
-     * Implémente le regroupement Sprint 4.
+     * Sprint 5 : Implémente le regroupement avec fenêtre de temps d'attente.
      */
    public PlanningResult genererPlanning(LocalDateTime date) throws SQLException {
     // 1. Charger les paramètres
