@@ -1,451 +1,380 @@
-================================================================================
-TODO – SPRINT 5 & SPRINT 6
-Amélioration du système d'assignation des véhicules et gestion des retours
-================================================================================
+SPRINT 6 — Gestion avancée des véhicules et persistance des assignations
+
+Team Lead : ETU003240
+Developer 1 : ETU003255
+Developer 2 : ETU003283
 
 ---
 
-1. OBJECTIF
+1. OBJECTIF DU SPRINT
+
+Ce sprint a pour objectif d'améliorer le système d’assignation des véhicules en introduisant :
+
+* l’enregistrement des assignations dans la base de données
+* la gestion des véhicules revenant pendant une fenêtre de regroupement
+* l’optimisation de la sélection des véhicules selon leur nombre de trajets
+* la gestion des réservations non assignées
+* la validation d’un départ uniquement si au moins une réservation est assignée
+
+Le système continue d'utiliser le mécanisme de **fenêtres de regroupement** introduit dans le Sprint 5.
 
 ---
 
-Améliorer le système actuel d'assignation de véhicules afin de :
+2. NOUVELLE TABLE : ATTRIBUTION
 
-* prendre en compte les véhicules qui retournent pendant la marge horaire
-* améliorer la sélection du véhicule (optimisation par nombre de trajets)
-* garantir qu'un départ n'existe que s'il y a au moins une réservation assignée
-* gérer les réservations non assignées en les reportant vers les créneaux suivants
-* enregistrer les assignations directement en base de données
-
-Les règles d'assignation existantes (tri par passagers, même lieu de départ, regroupement)
-restent valables sauf les modifications décrites ci-dessous.
-
----
-
-2. DONNÉES À AJOUTER EN BASE
-
----
-
-Créer une table pour enregistrer les assignations.
+Chaque assignation d’un véhicule à une réservation doit être enregistrée.
 
 Table : attribution
 
-Colonnes:
-  id                    (PK, auto-increment)
-  reservation_id        (FK → reservation)
-  vehicule_id           (FK → vehicule)
-  date_heure_depart     (TIMESTAMP)
-  date_heure_retour     (TIMESTAMP)
-  statut                (VARCHAR: 'ASSIGNE')
-  created_at            (TIMESTAMP)
-  updated_at            (TIMESTAMP)
+Colonnes :
 
-Objectif :
+* id
+* reservation_id
+* vehicule_id
+* date_heure_depart
+* date_heure_retour
+* statut
+* created_at
+* updated_at
 
-* enregistrer les assignations directement en base
-* suivre quels véhicules sont utilisés
-* connaître les trajets effectués par véhicule
+Objectifs :
 
-Important :
-
-Le nombre de trajets d'un véhicule sera calculé à partir du nombre
-d'enregistrements dans cette table (COUNT attributions par vehicule_id).
-
-On ne calcule PAS l'optimisation par distance totale mais par 
-**nombre de trajets effectués** (nombre de fois qu'un véhicule a été utilisé).
+* suivre les trajets effectués par chaque véhicule
+* connaître le nombre d’utilisations d’un véhicule
+* permettre l’optimisation basée sur le nombre de trajets
 
 ---
 
-3. MARGE HORAIRE (FENÊTRE DE REGROUPEMENT)
+3. PRINCIPE GLOBAL DE TRAITEMENT
+
+Le système fonctionne par fenêtres de regroupement.
+
+Pour chaque fenêtre :
+
+1. récupérer les réservations dans l’intervalle [start_time, end_time]
+2. déterminer les véhicules disponibles
+3. assigner les véhicules aux réservations
+4. effectuer le regroupement intra-véhicule
+5. calculer heure_depart
+6. calculer heure_retour
+7. enregistrer les assignations dans la table attribution
+8. identifier les réservations non assignées
+9. reporter ces réservations vers la fenêtre suivante
 
 ---
 
-La marge horaire est définie par :
+4. RÈGLES DE DISPONIBILITÉ DES VÉHICULES
 
-start_time = arrival_date d'une première réservation non assignée
-end_time = start_time + temps_attente (en minutes)
+Un véhicule est considéré disponible dans une fenêtre selon les cas suivants.
 
-Intervalle : [start_time, end_time]
+CAS 1 — Véhicule jamais utilisé
 
-Exemple :
+Aucune attribution existante.
 
-arrival_date = 08:00
-temps_attente = 30 min
+Résultat : véhicule disponible.
 
-Fenêtre : [08:00, 08:30]
+CAS 2 — Véhicule déjà utilisé
 
-Toutes les réservations avec arrival_date dans cet intervalle peuvent être
-regroupées et traitées ensemble.
+On recherche sa dernière date_heure_retour.
 
-Tous les véhicules assignés dans cette fenêtre auront la MÊME date de départ.
+Si :
 
----
+date_heure_retour <= end_time
 
-4. RECHERCHE DES VÉHICULES DISPONIBLES
+Alors : véhicule disponible.
 
----
+Sinon : véhicule indisponible.
 
-Avant de chercher à assigner une réservation, identifier les véhicules disponibles.
+CAS 3 — Véhicule revenant dans la fenêtre
 
-Véhicules disponibles :
+Si :
 
-1. Véhicules SANS attribution précédente
-   → toujours disponibles
+start_time <= date_heure_retour <= end_time
 
-2. Véhicules AVEC attribution précédente
-   → chercher leur dernière date_heure_retour
-   
-   SI date_heure_retour <= end_time de la fenêtre :
-       → DISPONIBLE (revenu avant ou dans la fenêtre)
-   
-   SINON (date_heure_retour > end_time) :
-       → INDISPONIBLE (revient APRÈS la fenêtre)
-
-3. ⭐ NOUVEAU : Véhicules qui reviennent DANS la fenêtre
-   
-   SI un véhicule revient entre start_time et end_time :
-       → L'AJOUTER dans la liste des véhicules disponibles
-       → Cela permet de le réutiliser immédiatement après son retour
-
-Exemple :
-
-Fenêtre : [08:50, 09:20]
-
-Véhicule A: retour 09:45 → ❌ INDISPONIBLE (après 09:20)
-Véhicule B: retour 09:00 → ✓ DISPONIBLE (revient dans la fenêtre)
-Véhicule C: retour 08:30 → ✓ DISPONIBLE (revenu avant)
-Véhicule D: aucune attrib → ✓ DISPONIBLE (neuf)
+Alors : véhicule disponible à partir de son heure de retour.
 
 ---
 
 5. SÉLECTION DU MEILLEUR VÉHICULE
 
----
+La sélection d’un véhicule pour une réservation suit l’ordre suivant.
 
-Pour chaque réservation à assigner, appliquer cette hiérarchie :
+1. Capacité
 
-ÉTAPE 1 : Filtrer par capacité
-───────────────────────────────
-Garder uniquement les véhicules où :
-  - nb_places >= nombre_passagers
-  - Pas de conflit horaire (heure_retour_précédente <= heure_depart)
+nb_places >= passenger_nbr
 
-SI aucun véhicule → réservation NON ASSIGNABLE
+2. Écart minimal
 
-ÉTAPE 2 : Réduire à l'écart minimum
-────────────────────────────────────
-Écart = nb_places - nombre_passagers
+écart = nb_places - passenger_nbr
 
-Garder UNIQUEMENT les véhicules avec écart MINIMUM.
+On garde les véhicules ayant l’écart minimum.
 
-Exemple :
-  Réservation: 3 passagers
-  V1: 5 places → écart 2
-  V2: 4 places → écart 1 ✓ MINIMUM
-  V3: 6 places → écart 3
-  
-  Garder: V2
+3. Nombre de trajets
 
-SI plusieurs avec écart minimal → continuer à ÉTAPE 3
+SELECT COUNT(*)
+FROM attribution
+WHERE vehicule_id = X
 
-ÉTAPE 3 : ⭐ NOUVEAU – Nombre de trajets effectués
-────────────────────────────────────────────────
-AVANT de vérifier le carburant, comparer l'historique du véhicule.
+On choisit le véhicule ayant le moins de trajets.
 
-POUR CHAQUE véhicule avec écart minimal :
-  Compter le nombre total d'attributions précédentes
-  (= nombre de fois que ce véhicule a été utilisé)
+4. Priorité carburant
 
-Garder UNIQUEMENT le(s) véhicule(s) avec LE MOINS de trajets
-(Préférer les véhicules sous-utilisés pour équilibrer la flotte)
+Ordre de priorité :
 
-Exemple :
-  Écart minimal = 1 (deux véhicules)
-  V2: 5 trajets précédents
-  V4: 2 trajets précédents
-  
-  Garder: V4 (2 < 5) ← moins de trajets
+Diesel > Essence > Hybride > Electrique
 
-SI plusieurs avec même nombre de trajets → continuer à ÉTAPE 4
+5. Choix aléatoire
 
-ÉTAPE 4 : Priorité carburant DIESEL
-──────────────────────────────────
-Garder UNIQUEMENT les véhicules avec carburant DIESEL ('D')
-
-SI plusieurs diesels → continuer à ÉTAPE 5
-
-ÉTAPE 5 : Choix ALÉATOIRE
-─────────────────────────
-SI >= 2 véhicules avec :
-  - Même écart
-  - Même nombre de trajets
-  - Même carburant
-  
-→ Choisir aléatoirement
+Si plusieurs véhicules restent équivalents.
 
 ---
 
-6. CALCUL DE L'HEURE DE DÉPART
+6. CALCUL DE L’HEURE DE DÉPART
+
+Par défaut :
+
+heure_depart = MAX(arrival_date)
+
+dans la fenêtre.
+
+CAS : véhicule revenant dans la fenêtre
+
+Si :
+
+heure_retour >= MAX(arrival_date)
+
+Alors :
+
+heure_depart = heure_retour
+
+Sinon :
+
+heure_depart = MAX(arrival_date)
+
+Validation :
+
+Un départ est valide uniquement si **au moins une réservation est assignée**.
+
+Sinon il faut choisir un autre arrival_date valide.
 
 ---
 
-⚠️ RÈGLE FONDAMENTALE :
-L'heure_depart DOIT TOUJOURS être DANS l'intervalle [start_time, end_time]
+7. REGROUPEMENT INTRA-VÉHICULE
 
-ÉTAPE 1 : Valeur par défaut
-──────────────────────────
-heure_depart = MAX(arrival_date) de la fenêtre
-(Cette valeur est TOUJOURS dans [start_time, end_time])
+Après assignation d’une réservation :
 
-ÉTAPE 2 : Vérifier les véhicules qui reviennent
-────────────────────────────────────────────────
-SI un véhicule revient DANS la fenêtre [start_time, end_time] :
-  
-  CAS 1 – Ce véhicule reçoit une réservation
-  ──────────────────────────────────────────
-  SI heure_retour >= MAX(arrival_date) :
-      → heure_depart = heure_retour
-        (le véhicule redémarre à son heure de retour)
-  
-  SINON (heure_retour < MAX(arrival_date)) :
-      → heure_depart = MAX(arrival_date)
-        (le véhicule peut attendre avant de repartir)
-  
-  CAS 2 – Ce véhicule N'a pas de réservation
-  ──────────────────────────────────────────
-  → heure_depart = MAX(arrival_date)
-  
-  CAS 3 – Aucun véhicule ne revient dans la fenêtre
-  ──────────────────────────────────────────────────
-  → heure_depart = MAX(arrival_date)
+places_restantes = nb_places - passagers_assignes
 
-ÉTAPE 3 : ⭐ VALIDATION CRITIQUE
-─────────────────────────────────
-⚠️ IMPORTANT :
-Un heure_depart n'est VALIDE que s'il existe AU MOINS UNE réservation
-assignée exactement à cette heure.
+On recherche d’autres réservations compatibles.
 
-SI aucune réservation n'est assignée à heure_depart calculé :
-    → Chercher le prochain MAX(arrival_date) qui a au moins 1 réservation
-    → Utiliser cet arrival_date comme heure_depart
+Conditions :
 
-ÉTAPE 4 : Vérification finale
-──────────────────────────────
-VÉRIFIER TOUJOURS : heure_depart >= start_time ET heure_depart <= end_time
+* même lieu_depart
+* réservation non assignée
+* passenger_nbr <= places_restantes
 
-SI NON (valeur hors intervalle) :
-    → Forcer heure_depart = MAX(arrival_date)
-
-Exemple :
-─────────
-Fenêtre : [08:10, 08:40]
-MAX(arrival_date) = 08:25
-
-Cas A – Véhicule retour 09:15 :
-  09:15 > 08:40 (HORS fenêtre) ❌
-  → heure_depart = 08:25 ✓
-
-Cas B – Véhicule retour 08:30 :
-  08:30 ∈ [08:10, 08:40] ✓
-  08:30 >= 08:25 ✓
-  → heure_depart = 08:30 ✓
-
-Cas C – Aucune réservation assignée à 08:30 :
-  → Chercher prochain arrival_date avec assignation
-  → heure_depart = 08:25 (ou autre arrival_date valide)
+Ces réservations sont ajoutées au même véhicule.
 
 ---
 
-7. REGROUPEMENT INTRA-FENÊTRE
+8. CALCUL DE L’HEURE DE RETOUR
+
+Étapes :
+
+1. optimiser l’ordre des destinations
+   fonction : directionX()
+
+2. calculer la distance totale aller-retour
+
+3. calculer la durée :
+
+durée = distance / vitesse_moyenne
+
+4. calculer :
+
+heure_retour = heure_depart + durée
 
 ---
 
-Après l'assignation d'une réservation à un véhicule :
+9. ENREGISTREMENT DES ASSIGNATIONS
 
-places_restantes = nb_places_vehicule - passagers_assignes
+Chaque assignation doit être enregistrée :
 
-POUR CHAQUE réservation restante DANS LA FENÊTRE :
-  SI :
-    - Pas encore assignée
-    - Même lieu_depart que la réservation précédente
-    - passenger_nbr <= places_restantes
-  ALORS :
-    → Ajouter au même véhicule
-    → Mettre à jour places_restantes
-    → Continuer la recherche
+INSERT INTO attribution (
+vehicule_id,
+reservation_id,
+date_heure_depart,
+date_heure_retour,
+statut,
+created_at,
+updated_at
+)
+VALUES (...)
 
-Exemple :
-─────────
-Véhicule A (7 places) ← Réservation R1 (3p, lieu Aéroport X)
-Places restantes = 4
+Statut :
 
-Chercher compatibles :
-  - R2 (2p, Aéroport X, non assignée) ✓ → Ajouter
-  - Places restantes = 2
-  - R3 (1p, Aéroport X, non assignée) ✓ → Ajouter
-  - Places restantes = 1
-  - R4 (2p, Aéroport X) ❌ Trop de passagers
-
-Résultat : Véhicule A transporte R1 + R2 + R3
-
----
-
-8. CALCUL DES TRAJETS ET HEURE DE RETOUR
-
----
-
-Après regroupement, calculer l'itinéraire complet :
-
-ÉTAPE 1 : Optimiser l'ordre des destinations
-────────────────────────────────────────────
-Appliquer directionX() pour trier les lieux
-→ Minimiser la distance totale
-
-ÉTAPE 2 : Calculer la durée du trajet
-────────────────────────────────────
-Distance aller-retour optimisée (km) / vitesse_moyenne (km/h)
-→ Durée en heures
-
-ÉTAPE 3 : Calculer l'heure de retour
-───────────────────────────────────
-heure_retour = heure_depart + durée_trajet
-
-Exemple :
-─────────
-heure_depart = 08:25
-Distance = 60 km (aller-retour optimisé)
-Vitesse = 30 km/h
-Durée = 60 / 30 = 2 heures
-heure_retour = 08:25 + 2h = 10:25
-
----
-
-9. ENREGISTREMENT EN BASE DE DONNÉES
-
----
-
-⭐ IMPORTANT : Persister TOUTES les attributions
-
-Après calcul complet de chaque attribution :
-
-ENREGISTRER dans la table `attribution` :
-  - vehicule_id
-  - reservation_id
-  - date_heure_depart
-  - date_heure_retour
-  - statut = 'ASSIGNE'
-  - created_at = maintenant
-  - updated_at = maintenant
-
-Cela permet de :
-  ✓ Connaître le nombre de trajets par véhicule (pour ÉTAPE 3 de sélection)
-  ✓ Suivre l'historique des assignations
-  ✓ Retracer quels véhicules ont effectué quels trajets
+ASSIGNE
 
 ---
 
 10. VALIDATION DU DÉPART COMMUN
 
----
+Tous les véhicules assignés dans une même fenêtre doivent avoir :
 
-⚠️ RÈGLE STRICTE :
-TOUS les véhicules assignés dans la MÊME fenêtre doivent avoir :
-    date_heure_depart IDENTIQUE
-
-VÉRIFICATION finale de la fenêtre :
-  POUR CHAQUE attribution :
-    VÉRIFIER que date_heure_depart = heure_depart_fenetre
-
-EXEMPLE CORRECT :
-─────────────────
-Fenêtre [08:10, 08:40], heure_depart = 08:25
-
-Véhicule A: départ 08:25 ✓
-Véhicule B: départ 08:25 ✓
-Véhicule C: départ 08:25 ✓
-
-Tous partent à 08:25 ✓
-
----
-
-11. GESTION DES RÉSERVATIONS NON ASSIGNÉES (REPORT PROGRESSIF)
-
----
-
-⭐ NOUVELLE FONCTIONNALITÉ CRITIQUE
-
-PROCESSUS :
-
-Certaines réservations peuvent ne pas être assignées faute de véhicule
-(tous occupés, pas de place, pas de route).
-
-ÉTAPE 1 : Identifier les non assignées
-──────────────────────────────────────
-À la fin du traitement d'une fenêtre :
-
-POUR CHAQUE réservation :
-  SI pas d'attribution trouvée :
-    → Ajouter à liste "non_assignees"
-
-ÉTAPE 2 : Reporter vers le créneau suivant
-──────────────────────────────────────────
-APRÈS fermeture d'une fenêtre :
-
-Chercher la prochaine première réservation non assignée
-→ Utiliser son arrival_date pour créer la fenêtre suivante
-
-AJOUTER les réservations non assignées à cette nouvelle fenêtre
-→ Elles sont maintenant incluses dans les réservations à traiter
-
-ÉTAPE 3 : Cycle de report continu
-──────────────────────────────────
-Chaque fenêtre = réservations naturelles + réservations reportées
+date_heure_depart identique.
 
 Exemple :
 
-FENÊTRE 1: [08:10, 08:40]
-  Traiter: R1, R2, R3
-  Non assignée: R4 ❌
+Fenêtre :
 
-FENÊTRE 2: [08:50, 09:20]
-  Traiter: R5 + R4 (reportée) ← NOUVEAU
-  Non assignée: R4, R6 ❌
+[08:10 , 08:40]
 
-FENÊTRE 3: [09:10, 09:40]
-  Traiter: R7 + R4 + R6 (reportées) ← NOUVEAU
-  Non assignée: R4 (continue...)
+Départ :
 
-FENÊTRE N...
-  → Continue jusqu'à assignation
+08:25
 
-ÉTAPE 4 : ⭐ AVANTAGE
-─────────────────────
-✅ Aucune réservation perdue
-✅ Chaque réservation a PLUSIEURS CHANCES d'être assignée
-✅ Adapté aux pics de demande
-✅ Équitable : réservations anciennes prioritaires
-✅ Système robuste et prévisible
+Résultat :
+
+V1 départ 08:25
+V2 départ 08:25
+V3 départ 08:25
 
 ---
 
-12. RÉSUMÉ DES MODIFICATIONS
+11. GESTION DES RÉSERVATIONS NON ASSIGNÉES
+
+Après traitement d’une fenêtre :
+
+Identifier toutes les réservations sans attribution.
+
+Ces réservations sont ajoutées dans :
+
+liste_non_assignees
 
 ---
 
-AVANT (Sprint 4) :
-  - Regroupement si arrival_date EXACTEMENT IDENTIQUE
-  - Véhicules retournés ignorés
-  - Sélection: écart → diesel → random
-  - Aucun enregistrement en base
-  - Réservations non assignées perdues
+12. REPORT VERS LA FENÊTRE SUIVANTE
 
-APRÈS (Sprint 5 & 6) :
-  ✅ Regroupement si arrival_date dans [start, start + temps_attente]
-  ✅ Véhicules qui reviennent réutilisables immédiatement
-  ✅ Sélection: écart → NOMBRE DE TRAJETS → diesel → random
-  ✅ Toutes les attributions persistées en base (table attribution)
-  ✅ Départ valide seulement si ≥1 réservation assignée
-  ✅ Réservations non assignées reportées progressivement
-  ✅ Tous les véhicules d'une fenêtre partent à même heure
+La prochaine fenêtre est créée à partir de :
 
-================================================================================
+arrival_date de la prochaine réservation.
+
+La nouvelle fenêtre traite :
+
+* les nouvelles réservations
+* les réservations reportées
+
+Exemple :
+
+Fenêtre 1 :
+
+[08:10 , 08:40]
+R1 R2 R3
+R4 non assignée
+
+Fenêtre 2 :
+
+[08:50 , 09:20]
+R5 + R4
+
+Fenêtre 3 :
+
+R6 + R4
+
+Le processus continue jusqu’à assignation.
+
+---
+
+13. DIVISION DES TÂCHES
+
+DEVELOPER 1 — ETU003255
+
+Gestion des véhicules disponibles.
+
+Responsabilités :
+
+* récupérer la dernière attribution d’un véhicule
+
+SELECT MAX(date_heure_retour)
+FROM attribution
+WHERE vehicule_id = ?
+
+* déterminer si le véhicule est disponible
+* gérer les cas : jamais utilisé / retour avant fenêtre / retour dans la fenêtre
+* construire la liste des vehicules_disponibles
+* calculer le nombre de trajets d’un véhicule
+
+SELECT COUNT(*)
+FROM attribution
+WHERE vehicule_id = ?
+
+* envoyer la liste des véhicules disponibles au module d’assignation
+
+---
+
+DEVELOPER 2 — ETU003283
+
+Assignation des véhicules et persistance.
+
+Responsabilités :
+
+* recevoir la liste des réservations de la fenêtre
+* recevoir la liste des véhicules disponibles
+* trier les réservations
+
+ordre : passenger_nbr DESC
+
+* sélectionner le véhicule optimal selon :
+
+écart
+nombre de trajets
+carburant
+choix aléatoire
+
+* effectuer le regroupement intra-véhicule
+* calculer heure_depart
+* calculer heure_retour
+* enregistrer les assignations dans la table attribution
+* identifier les réservations non assignées
+* les ajouter dans liste_report
+
+---
+
+14. MODIFICATION DE LA BASE DE DONNÉES
+
+Création de la table :
+
+CREATE TABLE attribution (
+id BIGSERIAL PRIMARY KEY,
+reservation_id BIGINT REFERENCES reservation(id),
+vehicule_id BIGINT REFERENCES vehicule(id),
+date_heure_depart TIMESTAMP,
+date_heure_retour TIMESTAMP,
+statut VARCHAR(20),
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+Index recommandés :
+
+CREATE INDEX idx_attribution_vehicule
+ON attribution(vehicule_id);
+
+CREATE INDEX idx_attribution_reservation
+ON attribution(reservation_id);
+
+CREATE INDEX idx_attribution_depart
+ON attribution(date_heure_depart);
+
+---
+
+15. RÉSUMÉ DU SPRINT 6
+
+Le Sprint 6 ajoute au système :
+
+✔ enregistrement des assignations en base
+✔ réutilisation des véhicules revenant dans la fenêtre
+✔ optimisation par nombre de trajets
+✔ regroupement avancé des réservations
+✔ gestion automatique des réservations non assignées
+✔ départ commun pour tous les véhicules d’une fenêtre
