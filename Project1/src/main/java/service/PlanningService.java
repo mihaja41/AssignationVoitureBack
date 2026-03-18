@@ -2,6 +2,7 @@ package service;
 
 import model.Attribution;
 import model.Distance;
+import model.FenetreRegroupement;
 import model.Reservation;
 import model.TypeCarburant;
 import model.Vehicule;
@@ -12,6 +13,7 @@ import repository.DistanceRepository;
 import repository.ParametreRepository;
 import repository.ReservationRepository;
 import repository.VehiculeRepository;
+import repository.AttributionRepository;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -27,6 +29,7 @@ import java.util.stream.Collectors;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Comparator;
 
 /**
  * Service de planification et d'attribution automatique de véhicules.
@@ -59,157 +62,452 @@ public class PlanningService {
     private final VehiculeRepository vehiculeRepository = new VehiculeRepository();
     private final DistanceRepository distanceRepository = new DistanceRepository();
     private final ParametreRepository parametreRepository = new ParametreRepository();
+    private final AttributionRepository attributionRepository = new AttributionRepository();  // Sprint 5/6
 
     /**
      * Générer le planning pour une date donnée.
      * Attribution STATIQUE (en mémoire uniquement, aucune modification en base).
-     * Sprint 5 : Implémente le regroupement avec fenêtre de temps d'attente.
+     *
+     * Sprint 5/6 - Developer 1 (ETU003255) :
+     * Implémente le regroupement avec fenêtre de temps d'attente.
+     *
+     * ALGORITHME :
+     * 1. Charger temps_attente et vitesse_moyenne
+     * 2. Récupérer les réservations triées par arrival_date ASC
+     * 3. Construire les fenêtres de regroupement [start, start + temps_attente]
+     * 4. Pour chaque fenêtre : traiter, reporter les non assignées vers la suivante
+     * 5. Retourner les attributions et non assignées finales
      */
-   public PlanningResult genererPlanning(LocalDateTime date) throws SQLException {
-    // 1. Charger les paramètres
-    double vitesseMoyenne = parametreRepository.getVitesseMoyenne();
+    public PlanningResult genererPlanning(LocalDateTime date) throws SQLException {
+        // 1. Charger les paramètres
+        double vitesseMoyenne = parametreRepository.getVitesseMoyenne();
+        double tempsAttente = parametreRepository.getTempsAttente();
 
-    // 2. Récupérer toutes les réservations pour cette date
-    List<Reservation> reservations = reservationRepository.findByDate(date);
-    
-    if (reservations == null || reservations.isEmpty()) {
-        return new PlanningResult(new ArrayList<>(), new ArrayList<>());
-    }
+        // 2. Récupérer toutes les réservations pour cette date
+        List<Reservation> reservations = reservationRepository.findByDate(date);
 
-    // AMÉLIORATION 1: Trier par nombre de passagers DÉCROISSANT
-    List<Reservation> reservationsTriees = reservations.stream()
-            .sorted((r1, r2) -> Integer.compare(r2.getPassengerNbr(), r1.getPassengerNbr()))
-            .collect(Collectors.toList());
-
-    List<Attribution> attributions = new ArrayList<>();
-    List<Reservation> nonAssignees = new ArrayList<>();
-    Set<Long> assignedIds = new HashSet<>();
-
-    // 3. Optimisation du parcours des réservations
-    for (Reservation reservation : reservationsTriees) {
-        if (assignedIds.contains(reservation.getId())) {
-            continue;
+        if (reservations == null || reservations.isEmpty()) {
+            return new PlanningResult(new ArrayList<>(), new ArrayList<>());
         }
 
-        // Vérifier la distance
-        BigDecimal distanceAller = getDistanceAllerSimple(reservation);
-        if (distanceAller == null) {
-            nonAssignees.add(reservation);
-            continue;
-        }
+        // 3. SPRINT 5 : Trier par arrival_date ASC (pour créer les fenêtres chronologiquement)
+        List<Reservation> reservationsTriees = reservations.stream()
+                .sorted(Comparator.comparing(Reservation::getArrivalDate))
+                .collect(Collectors.toList());
 
-        LocalDateTime dateHeureDepart = reservation.getArrivalDate();
+        // 4. Construire les fenêtres de regroupement
+        List<FenetreRegroupement> fenetres = construireFenetresRegroupement(reservationsTriees, tempsAttente);
 
-        // AMÉLIORATION 2: Recherche optimisée du véhicule
-        Attribution meilleureAttribution = trouverMeilleureAttributionAvecRegroupement(
-                reservation, reservationsTriees, assignedIds, attributions, dateHeureDepart, vitesseMoyenne);
+        // 5. Traiter chaque fenêtre
+        List<Attribution> toutesAttributions = new ArrayList<>();
+        List<Reservation> aReporter = new ArrayList<>();
 
-        if (meilleureAttribution != null) {
-            // Marquer toutes les réservations regroupées comme assignées
-            for (Reservation r : meilleureAttribution.getReservations()) {
-                assignedIds.add(r.getId());
+        for (int i = 0; i < fenetres.size(); i++) {
+            FenetreRegroupement fenetre = fenetres.get(i);
+
+            // Ajouter les réservations reportées de la fenêtre précédente
+            if (!aReporter.isEmpty()) {
+                fenetre.addAllReservations(aReporter);
+                fenetre.setHeureDepart(fenetre.calculerHeureDepart());
+                aReporter.clear();
             }
-            
-            // Calculer les distances et durées pour le trajet regroupé
-            List<TrajetCar> trajets = getDureTotalTrajet(meilleureAttribution.getReservations(), vitesseMoyenne);
-            double dureeTotale = getTotalDuree(trajets);
-            double distanceTotale = getTotalDistance(trajets);
-            
-            meilleureAttribution.setDetailTraject(trajets);
-            meilleureAttribution.setDateHeureDepart(dateHeureDepart);
-            meilleureAttribution.setDistanceKm(distanceAller);
-            meilleureAttribution.setDistanceAllerRetourKm(BigDecimal.valueOf(distanceTotale));
-            meilleureAttribution.setDateHeureRetour(dateHeureDepart.plusMinutes((long) (dureeTotale * 60)));
-            
-            attributions.add(meilleureAttribution);
-        } else {
-            nonAssignees.add(reservation);
+
+            // Traiter la fenêtre (utilise la logique existante)
+            PlanningResult resultatFenetre = traiterFenetre(fenetre, toutesAttributions, vitesseMoyenne);
+
+            // Collecter les attributions
+            toutesAttributions.addAll(resultatFenetre.getAttributions());
+
+            // Reporter les non assignées vers la prochaine fenêtre
+            List<Reservation> nonAssigneesFenetre = resultatFenetre.getReservationsNonAssignees();
+            if (!nonAssigneesFenetre.isEmpty() && i < fenetres.size() - 1) {
+                aReporter.addAll(nonAssigneesFenetre);
+            } else {
+                aReporter.addAll(nonAssigneesFenetre);
+            }
         }
+
+        // Les réservations qui restent dans aReporter sont les non assignées finales
+        return new PlanningResult(toutesAttributions, aReporter);
     }
 
-    return new PlanningResult(attributions, nonAssignees);
-}
+    /**
+     * Générer le planning ET enregistrer les attributions en base de données.
+     * Sprint 5/6 - Developer 2 (ETU003283)
+     *
+     * Cette méthode appelle genererPlanning() puis sauvegarde toutes les
+     * attributions dans la table attribution.
+     *
+     * @param date La date pour laquelle générer le planning
+     * @return PlanningResult avec les attributions (maintenant persistées)
+     */
+    public PlanningResult genererPlanningAvecEnregistrement(LocalDateTime date) throws SQLException {
+        // 1. Générer le planning en mémoire
+        PlanningResult result = genererPlanning(date);
+
+        // 2. Enregistrer chaque attribution en base
+        for (Attribution attribution : result.getAttributions()) {
+            attributionRepository.saveAll(attribution);
+        }
+
+        return result;
+    }
+
+    // ============================================================================
+    // MÉTHODES DEVELOPER 1 (ETU003255) - SPRINT 5/6
+    // Gestion des fenêtres de regroupement et du temps d'attente
+    // ============================================================================
+
+    /**
+     * Construit les fenêtres de regroupement à partir des réservations.
+     * Sprint 5 - Developer 1 (ETU003255)
+     *
+     * @param reservations Liste des réservations triées par arrival_date ASC
+     * @param tempsAttenteMinutes Temps d'attente en minutes
+     * @return Liste des fenêtres de regroupement
+     */
+    private List<FenetreRegroupement> construireFenetresRegroupement(
+            List<Reservation> reservations,
+            double tempsAttenteMinutes) {
+
+        List<FenetreRegroupement> fenetres = new ArrayList<>();
+
+        if (reservations == null || reservations.isEmpty()) {
+            return fenetres;
+        }
+
+        List<Reservation> restantes = new ArrayList<>(reservations);
+
+        while (!restantes.isEmpty()) {
+            Reservation premiere = restantes.get(0);
+            LocalDateTime startTime = premiere.getArrivalDate();
+            LocalDateTime endTime = startTime.plusMinutes((long) tempsAttenteMinutes);
+
+            FenetreRegroupement fenetre = new FenetreRegroupement(startTime, endTime);
+
+            // Collecter les réservations dans cette fenêtre
+            Iterator<Reservation> iterator = restantes.iterator();
+            while (iterator.hasNext()) {
+                Reservation r = iterator.next();
+                if (fenetre.estDansFenetre(r.getArrivalDate())) {
+                    fenetre.addReservation(r);
+                    iterator.remove();
+                }
+            }
+
+            fenetre.setHeureDepart(fenetre.calculerHeureDepart());
+            fenetres.add(fenetre);
+        }
+
+        return fenetres;
+    }
+
+    /**
+     * Traite une fenêtre de regroupement.
+     * Sprint 5 - Developer 1 (ETU003255)
+     *
+     * Cette méthode prépare les données et appelle la logique d'assignation.
+     * Le Developer 2 améliorera la partie sélection de véhicules.
+     */
+    private PlanningResult traiterFenetre(
+            FenetreRegroupement fenetre,
+            List<Attribution> attributionsExistantes,
+            double vitesseMoyenne) throws SQLException {
+
+        List<Attribution> attributionsFenetre = new ArrayList<>();
+        List<Reservation> nonAssigneesFenetre = new ArrayList<>();
+        Set<Long> assignedIds = new HashSet<>();
+
+        // Récupérer l'heure de départ de la fenêtre (tous les véhicules partent ensemble)
+        LocalDateTime heureDepart = fenetre.getHeureDepart();
+
+        // Validation : l'heure de départ doit être dans la fenêtre
+        if (!fenetre.estDansFenetre(heureDepart)) {
+            heureDepart = fenetre.getStartTime();
+        }
+
+        // Trier par passagers décroissant pour le regroupement optimal
+        List<Reservation> reservationsTriees = fenetre.getReservationsTrieesParPassagers();
+
+        for (Reservation reservation : reservationsTriees) {
+            if (assignedIds.contains(reservation.getId())) {
+                continue;
+            }
+
+            BigDecimal distanceAller = getDistanceAllerSimple(reservation);
+            if (distanceAller == null) {
+                nonAssigneesFenetre.add(reservation);
+                continue;
+            }
+
+            // Utiliser la logique existante d'assignation
+            Attribution meilleureAttribution = trouverMeilleureAttributionAvecRegroupement(
+                    reservation, reservationsTriees, assignedIds,
+                    attributionsExistantes, heureDepart, vitesseMoyenne);
+
+            if (meilleureAttribution != null) {
+                for (Reservation r : meilleureAttribution.getReservations()) {
+                    assignedIds.add(r.getId());
+                }
+
+                List<TrajetCar> trajets = getDureTotalTrajet(
+                        meilleureAttribution.getReservations(), vitesseMoyenne);
+                double dureeTotale = getTotalDuree(trajets);
+                double distanceTotale = getTotalDistance(trajets);
+
+                meilleureAttribution.setDetailTraject(trajets);
+                meilleureAttribution.setDateHeureDepart(heureDepart);
+                meilleureAttribution.setDistanceKm(distanceAller);
+                meilleureAttribution.setDistanceAllerRetourKm(BigDecimal.valueOf(distanceTotale));
+                meilleureAttribution.setDateHeureRetour(heureDepart.plusMinutes((long) (dureeTotale * 60)));
+
+                attributionsFenetre.add(meilleureAttribution);
+            } else {
+                nonAssigneesFenetre.add(reservation);
+            }
+        }
+
+        // ⭐ VALIDATION CRITIQUE : Un départ n'est valide que s'il existe AU MOINS UNE réservation assignée
+        // Sprint 5/6 - Developer 1 (ETU003255)
+        if (!attributionsFenetre.isEmpty()) {
+            // Vérifier que l'heure de départ est valide (au moins 1 attribution existe)
+            LocalDateTime heureDepartValidee = validerHeureDepartCritique(attributionsFenetre, fenetre);
+
+            // Mettre à jour toutes les attributions avec l'heure de départ validée
+            for (Attribution attribution : attributionsFenetre) {
+                if (!attribution.getDateHeureDepart().equals(heureDepartValidee)) {
+                    // Recalculer l'heure de retour avec la nouvelle heure de départ
+                    long dureeMinutes = java.time.Duration.between(
+                            attribution.getDateHeureDepart(),
+                            attribution.getDateHeureRetour()).toMinutes();
+                    attribution.setDateHeureDepart(heureDepartValidee);
+                    attribution.setDateHeureRetour(heureDepartValidee.plusMinutes(dureeMinutes));
+                }
+            }
+        }
+
+        return new PlanningResult(attributionsFenetre, nonAssigneesFenetre);
+    }
+
+    /**
+     * Valide l'heure de départ critique.
+     * Sprint 5/6 - Developer 1 (ETU003255)
+     *
+     * Un départ n'est VALIDE que s'il existe AU MOINS UNE réservation assignée.
+     * Retourne l'heure de départ validée.
+     *
+     * @param attributions Liste des attributions de la fenêtre
+     * @param fenetre La fenêtre de regroupement
+     * @return L'heure de départ validée
+     */
+    private LocalDateTime validerHeureDepartCritique(
+            List<Attribution> attributions,
+            FenetreRegroupement fenetre) {
+
+        if (attributions == null || attributions.isEmpty()) {
+            // Pas d'attribution = pas de départ valide
+            return fenetre.getHeureDepart();
+        }
+
+        // Trouver le MAX(arrival_date) parmi les réservations ASSIGNÉES
+        LocalDateTime maxArrivalAssignee = null;
+
+        for (Attribution attribution : attributions) {
+            for (Reservation reservation : attribution.getReservations()) {
+                LocalDateTime arrivalDate = reservation.getArrivalDate();
+                if (maxArrivalAssignee == null || arrivalDate.isAfter(maxArrivalAssignee)) {
+                    maxArrivalAssignee = arrivalDate;
+                }
+            }
+        }
+
+        if (maxArrivalAssignee == null) {
+            return fenetre.getHeureDepart();
+        }
+
+        // Vérifier que l'heure est dans la fenêtre
+        if (!fenetre.estDansFenetre(maxArrivalAssignee)) {
+            // Forcer à MAX(arrival_date) de la fenêtre
+            return fenetre.calculerHeureDepart();
+        }
+
+        return maxArrivalAssignee;
+    }
+
+    // ============================================================================
+    // MÉTHODES DEVELOPER 2 (ETU003283) - SPRINT 5/6
+    // Gestion des véhicules, sélection optimale, enregistrement en base
+    // ============================================================================
+
+    /**
+     * Trouve la meilleure attribution avec regroupement.
+     * Sprint 5/6 - Developer 2 (ETU003283)
+     *
+     * Critères de sélection (dans l'ordre) :
+     * 1. Capacité suffisante (nb_places >= passagers)
+     * 2. Disponibilité (pas de conflit horaire OU revient dans la fenêtre)
+     * 3. Écart minimum (places - passagers)
+     * 4. Équilibrage (moins de trajets effectués = prioritaire)
+     * 5. Priorité DIESEL
+     * 6. Choix aléatoire si égalité
+     */
+    private Attribution trouverMeilleureAttributionAvecRegroupement(
+            Reservation reservationPrincipale,
+            List<Reservation> toutesReservations,
+            Set<Long> assignedIds,
+            List<Attribution> attributionsExistantes,
+            LocalDateTime dateHeureDepart,
+            double vitesseMoyenne) throws SQLException {
+
+        // 1. Récupérer tous les véhicules
+        List<Vehicule> tousVehicules = vehiculeRepository.findAvailableVehicules(1);
+
+        // 2. Récupérer le nombre de trajets par véhicule (pour équilibrage)
+        Map<Long, Integer> trajetsParVehicule = attributionRepository.countTrajetsParVehicule();
+
+        // 3. Filtrer les véhicules disponibles
+        List<Vehicule> vehiculesDisponibles = new ArrayList<>();
+        Map<Long, LocalDateTime> heuresRetourVehicules = new HashMap<>();
+
+        for (Vehicule vehicule : tousVehicules) {
+            // Vérifier capacité minimale
+            if (vehicule.getNbPlace() < reservationPrincipale.getPassengerNbr()) {
+                continue;
+            }
+
+            // Vérifier disponibilité
+            if (!hasConflitHoraire(vehicule.getId(), dateHeureDepart, attributionsExistantes)) {
+                // Véhicule directement disponible
+                vehiculesDisponibles.add(vehicule);
+            } else {
+                // Vérifier si le véhicule revient DANS la fenêtre
+                LocalDateTime heureRetour = getHeureRetourVehicule(vehicule.getId(), attributionsExistantes);
+                if (heureRetour != null && !heureRetour.isAfter(dateHeureDepart)) {
+                    vehiculesDisponibles.add(vehicule);
+                    heuresRetourVehicules.put(vehicule.getId(), heureRetour);
+                }
+            }
+        }
+
+        if (vehiculesDisponibles.isEmpty()) {
+            return null;
+        }
+
+        // 4. Trouver les réservations compatibles pour le regroupement
+        List<Reservation> compatibles = trouverReservationsCompatibles(
+                reservationPrincipale, toutesReservations, assignedIds);
+
+        // 5. Évaluer chaque véhicule et trouver le meilleur
+        Attribution meilleureAttribution = null;
+        int meilleurScore = Integer.MAX_VALUE;
+
+        for (Vehicule vehicule : vehiculesDisponibles) {
+            int placesDisponibles = vehicule.getNbPlace();
+            List<Reservation> reservationsGroupees = new ArrayList<>();
+            reservationsGroupees.add(reservationPrincipale);
+            placesDisponibles -= reservationPrincipale.getPassengerNbr();
+
+            // Regrouper d'autres réservations compatibles
+            for (Reservation compatible : compatibles) {
+                if (compatible.getPassengerNbr() <= placesDisponibles) {
+                    reservationsGroupees.add(compatible);
+                    placesDisponibles -= compatible.getPassengerNbr();
+                }
+            }
+
+            // Calculer le score avec les nouveaux critères
+            int nbTrajets = trajetsParVehicule.getOrDefault(vehicule.getId(), 0);
+            int score = evaluerAttributionAvecEquilibrage(vehicule, reservationsGroupees, nbTrajets);
+
+            if (score < meilleurScore) {
+                meilleurScore = score;
+
+                Attribution attribution = new Attribution();
+                attribution.setVehicule(vehicule);
+                attribution.setReservation(reservationPrincipale);
+                for (Reservation r : reservationsGroupees) {
+                    attribution.addReservation(r);
+                }
+                attribution.setStatut("ASSIGNE");
+
+                // Gérer l'heure de départ pour véhicule revenant
+                LocalDateTime heureRetourVehicule = heuresRetourVehicules.get(vehicule.getId());
+                if (heureRetourVehicule != null && heureRetourVehicule.isAfter(dateHeureDepart)) {
+                    // CAS 1: heure_retour > MAX(arrival_date) → départ = heure_retour
+                    attribution.setDateHeureDepart(heureRetourVehicule);
+                }
+
+                meilleureAttribution = attribution;
+            }
+        }
+
+        return meilleureAttribution;
+    }
+
+    /**
+     * Récupère l'heure de retour d'un véhicule depuis les attributions existantes.
+     */
+    private LocalDateTime getHeureRetourVehicule(Long vehiculeId, List<Attribution> attributions) {
+        return attributions.stream()
+                .filter(a -> a.getVehicule().getId().equals(vehiculeId))
+                .map(Attribution::getDateHeureRetour)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
+    }
+
+    /**
+     * Évaluation du score avec équilibrage par nombre de trajets.
+     * Sprint 5/6 - Developer 2 (ETU003283)
+     *
+     * Score plus bas = meilleure attribution
+     * Critères :
+     * 1. Écart places (pondération forte)
+     * 2. Nombre de trajets effectués (équilibrage)
+     * 3. Priorité DIESEL
+     */
+    private int evaluerAttributionAvecEquilibrage(Vehicule vehicule, List<Reservation> reservations, int nbTrajets) {
+        int totalPassagers = reservations.stream()
+                .mapToInt(Reservation::getPassengerNbr)
+                .sum();
+
+        // Critère 1: Minimiser les places vides (pondération x100)
+        int placesVides = vehicule.getNbPlace() - totalPassagers;
+        int score = placesVides * 100;
+
+        // Critère 2: Équilibrage - moins de trajets = meilleur (pondération x10)
+        score += nbTrajets * 10;
+
+        // Critère 3: Priorité DIESEL uniquement
+        if (vehicule.getTypeCarburant() != TypeCarburant.D) {
+            score += 5;
+        }
+
+        // Critère 4: Maximiser le nombre de passagers transportés (bonus)
+        score -= totalPassagers;
+
+        return score;
+    }
 
 /**
- * AMÉLIORATION 3: Fonction optimisée qui trouve la meilleure combinaison
- * de véhicule et de réservations à regrouper
- */
-private Attribution trouverMeilleureAttributionAvecRegroupement(
-        Reservation reservationPrincipale,
-        List<Reservation> toutesReservations,
-        Set<Long> assignedIds,
-        List<Attribution> attributionsExistantes,
-        LocalDateTime dateHeureDepart,
-        double vitesseMoyenne) throws SQLException {
-    
-    // Chercher tous les véhicules disponibles avec assez de places
-    List<Vehicule> vehiculesDisponibles = vehiculeRepository.findAvailableVehicules(1); // Récupérer tous les véhicules
-    
-    // Filtrer par disponibilité horaire et par capacité minimale
-    vehiculesDisponibles = vehiculesDisponibles.stream()
-            .filter(v -> !hasConflitHoraire(v.getId(), dateHeureDepart, attributionsExistantes))
-            .filter(v -> v.getNbPlace() >= reservationPrincipale.getPassengerNbr())
-            .collect(Collectors.toList());
-    
-    if (vehiculesDisponibles.isEmpty()) {
-        return null;
-    }
-    
-    // Trouver les réservations compatibles pour le regroupement (même heure, même lieu départ)
-    List<Reservation> compatibles = trouverReservationsCompatibles(
-            reservationPrincipale, toutesReservations, assignedIds);
-    
-    Attribution meilleureAttribution = null;
-    int meilleurScore = Integer.MAX_VALUE; // Plus le score est bas, mieux c'est
-    
-    // Tester chaque véhicule disponible
-    for (Vehicule vehicule : vehiculesDisponibles) {
-        int placesDisponibles = vehicule.getNbPlace();
-        List<Reservation> reservationsGroupees = new ArrayList<>();
-        reservationsGroupees.add(reservationPrincipale);
-        placesDisponibles -= reservationPrincipale.getPassengerNbr();
-        
-        // Essayer d'ajouter d'autres réservations compatibles
-        for (Reservation compatible : compatibles) {
-            if (compatible.getPassengerNbr() <= placesDisponibles) {
-                reservationsGroupees.add(compatible);
-                placesDisponibles -= compatible.getPassengerNbr();
-            }
-        }
-        
-        // Calculer le score pour cette attribution
-        int score = evaluerAttribution(vehicule, reservationsGroupees);
-        
-        if (score < meilleurScore) {
-            meilleurScore = score;
-            
-            Attribution attribution = new Attribution();
-            attribution.setVehicule(vehicule);
-            attribution.setReservation(reservationPrincipale);
-            for (Reservation r : reservationsGroupees) {
-                attribution.addReservation(r);
-            }
-            attribution.setStatut("ASSIGNE");
-            
-            meilleureAttribution = attribution;
-        }
-    }
-    
-    return meilleureAttribution;
-}
-
-/**
- * AMÉLIORATION 4: Trouver toutes les réservations compatibles pour regroupement
+ * SPRINT 5/6 : Trouver toutes les réservations compatibles pour regroupement INTRA-FENÊTRE.
+ *
+ * Les réservations dans toutesReservations sont DÉJÀ dans la même fenêtre de temps,
+ * donc on ne filtre PAS sur arrival_date exacte mais sur :
+ * - Non assignée
+ * - Pas la réservation principale
+ * - Même lieu de départ
+ * - Triées par passagers décroissant (pour optimiser le remplissage)
  */
 private List<Reservation> trouverReservationsCompatibles(
         Reservation reservationPrincipale,
         List<Reservation> toutesReservations,
         Set<Long> assignedIds) {
-    
+
     return toutesReservations.stream()
             .filter(r -> !assignedIds.contains(r.getId()))
             .filter(r -> !r.getId().equals(reservationPrincipale.getId()))
-            .filter(r -> r.getArrivalDate().equals(reservationPrincipale.getArrivalDate()))
+            // SPRINT 5/6 : PAS de filtre sur arrival_date exacte car les réservations
+            // sont déjà dans la même fenêtre [start_time, end_time]
             .filter(r -> r.getLieuDepart() != null && reservationPrincipale.getLieuDepart() != null)
             .filter(r -> r.getLieuDepart().getId().equals(reservationPrincipale.getLieuDepart().getId()))
             .sorted((r1, r2) -> Integer.compare(r2.getPassengerNbr(), r1.getPassengerNbr())) // Trier par taille décroissante
