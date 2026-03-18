@@ -7,7 +7,8 @@ import java.util.List;
 
 /**
  * Représente une attribution de véhicule à une ou plusieurs réservations regroupées (résultat du planning).
- * Objet en mémoire uniquement — PAS de table en base de données.
+ *
+ * Sprint 5/6 : Maintenant enregistré en base de données dans la table attribution.
  *
  * Sprint 4 – Regroupement :
  *   Un même véhicule peut transporter plusieurs réservations si :
@@ -21,6 +22,7 @@ import java.util.List;
  *   - dateHeureRetour = dateHeureDepart + duree
  */
 public class Attribution {
+    private Long id;  // ID en base de données (Sprint 5/6)
     private Vehicule vehicule;
     private Reservation reservation;                         // réservation principale (backward compat)
     private List<Reservation> reservations = new ArrayList<>();  // toutes les réservations regroupées
@@ -76,6 +78,14 @@ public class Attribution {
     }
 
     // ========== Getters & Setters ==========
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
 
     public Vehicule getVehicule() {
         return vehicule;

@@ -74,8 +74,6 @@ temps_attente = 30 min
 
 Fenêtre : [08:00, 08:30]
 
-Toutes les réservations avec arrival_date dans cet intervalle peuvent être
-regroupées et traitées ensemble.
 
 Tous les véhicules assignés dans cette fenêtre auront la MÊME date de départ.
 
