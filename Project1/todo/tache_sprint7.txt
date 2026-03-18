@@ -1,0 +1,119 @@
+================================================================================
+RÉPARTITION DES TÂCHES – SPRINT 7
+Séparation des passagers d'une même réservation dans plusieurs véhicules
+================================================================================
+
+Référence : todo_sprint7.txt
+Créé par : ETU003255 (Team Lead)
+Date : 2026-03-18
+
+================================================================================
+ÉQUIPE
+================================================================================
+
+| Rôle       | Matricule  |
+|------------|------------|
+| Team Lead  | ETU003255  |
+| Dev 1      | ETU003240  |
+| Dev 2      | ETU003283  |
+
+================================================================================
+DÉVELOPPEUR 1 – ETU003240
+================================================================================
+
+
+───────────────────────────────────────────────────────────────────────────────
+FONCTIONNALITÉ 1 : Division des passagers d'une réservation
+───────────────────────────────────────────────────────────────────────────────
+
+Quand une réservation a plus de passagers que la capacité du plus grand
+véhicule disponible, diviser les passagers entre plusieurs véhicules.
+
+Exemple :
+  - Réservation : 15 passagers
+  - Véhicules disponibles : V1 (12 places), V2 (5 places)
+  - Résultat : V1 reçoit 12 passagers, V2 reçoit 3 passagers
+
+───────────────────────────────────────────────────────────────────────────────
+FONCTIONNALITÉ 2 : Sélection du véhicule pour chaque partie de division
+───────────────────────────────────────────────────────────────────────────────
+
+À chaque étape de la division, appliquer les critères de sélection :
+  1. Écart minimum (nb_places - nb_passagers_à_assigner)
+  2. Moins de trajets effectués
+  3. Priorité Diesel
+  4. Choix aléatoire si égalité
+
+Exemple :
+  - Passagers restants : 3
+  - V2 (5 places, Diesel, 0 trajet) vs V3 (5 places, Essence, 1 trajet)
+  - Résultat : V2 choisi (Diesel priorité à égalité d'écart et trajets)
+
+───────────────────────────────────────────────────────────────────────────────
+FONCTIONNALITÉ 3 : Regroupement après division
+───────────────────────────────────────────────────────────────────────────────
+
+Après avoir assigné une partie des passagers, s'il reste des places dans
+le véhicule, chercher d'autres réservations à regrouper.
+
+Exemple :
+  - V2 reçoit 3 passagers de R1 (places restantes : 2)
+  - R3 a 2 passagers avec même lieu de départ
+  - Résultat : V2 transporte R1 (3p) + R3 (2p)
+
+================================================================================
+DÉVELOPPEUR 2 – ETU003283
+================================================================================
+
+
+───────────────────────────────────────────────────────────────────────────────
+FONCTIONNALITÉ 4 : Enregistrement du nombre de passagers par attribution
+───────────────────────────────────────────────────────────────────────────────
+
+Chaque attribution doit maintenant indiquer combien de passagers sont
+transportés dans CE véhicule (pas le total de la réservation).
+
+Exemple :
+  - Réservation R1 : 8 passagers divisés en 5 + 3
+  - Attribution 1 : R1 → V1, nb_passagers_assignes = 5
+  - Attribution 2 : R1 → V2, nb_passagers_assignes = 3
+
+───────────────────────────────────────────────────────────────────────────────
+FONCTIONNALITÉ 5 : Report des passagers non assignables
+───────────────────────────────────────────────────────────────────────────────
+
+Si tous les véhicules sont utilisés mais qu'il reste des passagers non
+assignés, reporter ces passagers à la fenêtre suivante.
+
+Exemple :
+  - Réservation R1 : 12 passagers
+  - Véhicules disponibles : V1 (5 places), V2 (5 places)
+  - Résultat : V1 → 5p, V2 → 5p, 2 passagers reportés à la prochaine fenêtre
+
+───────────────────────────────────────────────────────────────────────────────
+FONCTIONNALITÉ 6 : Traitement des passagers reportés dans la fenêtre suivante
+───────────────────────────────────────────────────────────────────────────────
+
+Les passagers reportés doivent être traités avec les nouvelles réservations
+de la fenêtre suivante, toujours triés par nombre de passagers décroissant.
+
+Exemple :
+  - Fenêtre 1 : R1 (2 passagers reportés)
+  - Fenêtre 2 : R2 (4 passagers), R3 (3 passagers)
+  - Ordre de traitement : R2 (4p), R3 (3p), R1_reste (2p)
+
+================================================================================
+RÉSUMÉ
+================================================================================
+
+| Dev       | Fonctionnalités                                    |
+|-----------|----------------------------------------------------|
+| ETU003240 | 1. Division des passagers entre véhicules          |
+|           | 2. Sélection véhicule à chaque étape de division   |
+|           | 3. Regroupement après division                     |
+|-----------|----------------------------------------------------|
+| ETU003283 | 4. Enregistrement nb_passagers par attribution     |
+|           | 5. Report des passagers non assignables            |
+|           | 6. Traitement des reportés dans fenêtre suivante   |
+
+================================================================================

@@ -1,0 +1,433 @@
+================================================================================
+TODO – SPRINT 7
+Séparation des passagers d'une même réservation dans plusieurs véhicules
+================================================================================
+
+---
+
+1. OBJECTIF
+---
+
+Permettre la DIVISION des passagers d'une même réservation entre plusieurs
+véhicules lorsqu'aucun véhicule disponible n'a une capacité suffisante.
+
+AVANT (Sprint 1-6) :
+  - Une réservation = UN seul véhicule
+  - Si aucun véhicule n'a assez de places → réservation NON ASSIGNÉE
+  - Réservation reportée à la fenêtre suivante
+
+APRÈS (Sprint 7) :
+  - Une réservation peut être DIVISÉE entre plusieurs véhicules
+  - Les passagers sont répartis de manière optimale
+  - Maximise le taux d'assignation des réservations
+
+---
+
+2. RAPPEL : CRITÈRES DE SÉLECTION DES VÉHICULES
+
+---
+
+Les critères de sélection restent IDENTIQUES et s'appliquent à CHAQUE
+assignation (complète ou partielle) :
+
+ÉTAPE 1 : Filtrer par disponibilité
+───────────────────────────────────
+- Véhicule disponible sur la période [start_time, end_time]
+- Pas de conflit horaire (date_heure_retour <= heure_depart)
+
+ÉTAPE 2 : Écart minimum
+───────────────────────
+Écart = nb_places - nb_passagers_à_assigner
+
+Choisir le véhicule avec l'écart le PLUS PROCHE de 0.
+(Minimiser les places vides)
+
+ÉTAPE 3 : Moins de trajets
+──────────────────────────
+Si plusieurs véhicules avec même écart :
+→ Choisir celui avec le MOINS de trajets effectués
+
+ÉTAPE 4 : Priorité Diesel
+─────────────────────────
+Si égalité de trajets :
+→ Choisir un véhicule DIESEL ('D')
+
+ÉTAPE 5 : Choix aléatoire
+─────────────────────────
+Si encore égalité :
+→ Choisir au hasard
+
+---
+
+3. NOUVEL ALGORITHME DE DIVISION
+
+---
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ALGORITHME SPRINT 7 : ASSIGNATION AVEC DIVISION                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ENTRÉE : Liste de réservations triées par nb_passagers DÉCROISSANT
+         Liste de véhicules disponibles
+
+POUR CHAQUE réservation (triée par passagers DESC) :
+│
+├─► passagers_restants = reservation.nb_passagers
+│
+├─► TANT QUE passagers_restants > 0 ET véhicules_disponibles non vide :
+│   │
+│   ├─► Trouver le meilleur véhicule selon les critères de sélection
+│   │   (écart min, moins trajets, diesel, random)
+│   │
+│   ├─► SI vehicule.nb_places >= passagers_restants :
+│   │   │   ┌─────────────────────────────────────────────┐
+│   │   │   │ CAS 1 : ASSIGNATION COMPLÈTE                │
+│   │   │   └─────────────────────────────────────────────┘
+│   │   ├─► Assigner TOUS les passagers_restants au véhicule
+│   │   ├─► places_restantes = vehicule.nb_places - passagers_restants
+│   │   ├─► passagers_restants = 0
+│   │   │
+│   │   └─► SI places_restantes > 0 :
+│   │       │   ┌─────────────────────────────────────────┐
+│   │       │   │ REGROUPEMENT : Remplir les places vides │
+│   │       │   └─────────────────────────────────────────┘
+│   │       └─► Chercher d'autres réservations à regrouper
+│   │           (même lieu départ, nb_passagers <= places_restantes)
+│   │           → Peut aussi diviser ces réservations si nécessaire
+│   │
+│   └─► SINON (vehicule.nb_places < passagers_restants) :
+│       │   ┌─────────────────────────────────────────────┐
+│       │   │ CAS 2 : ASSIGNATION PARTIELLE (DIVISION)    │
+│       │   └─────────────────────────────────────────────┘
+│       ├─► Assigner vehicule.nb_places passagers au véhicule
+│       ├─► passagers_restants = passagers_restants - vehicule.nb_places
+│       ├─► Marquer le véhicule comme UTILISÉ (retirer de la liste)
+│       └─► Continuer la boucle pour les passagers_restants
+│
+└─► SI passagers_restants > 0 :
+    │   ┌─────────────────────────────────────────────────┐
+    │   │ CAS 3 : PASSAGERS NON ASSIGNABLES               │
+    │   └─────────────────────────────────────────────────┘
+    └─► Reporter les passagers_restants à la fenêtre suivante
+        (Créer une "réservation partielle" pour le report)
+
+---
+
+4. STRUCTURE DE DONNÉES POUR LA DIVISION
+
+---
+
+Pour gérer la division, nous devons adapter la structure Attribution :
+
+AVANT :
+  Attribution {
+    vehicule_id
+    reservation_id       ← 1 seule réservation
+    date_heure_depart
+    date_heure_retour
+    statut
+  }
+
+APRÈS :
+  Attribution {
+    vehicule_id
+    reservation_id       ← réservation d'origine
+    nb_passagers_assignes ← NOUVEAU : nombre de passagers dans CE véhicule
+    date_heure_depart
+    date_heure_retour
+    statut
+  }
+
+Une même reservation_id peut apparaître PLUSIEURS FOIS dans la table
+attribution, avec des nb_passagers_assignes différents.
+
+---
+
+5. MODIFICATION DE LA TABLE ATTRIBUTION
+
+---
+
+ALTER TABLE attribution ADD COLUMN nb_passagers_assignes INTEGER;
+
+-- Mettre à jour les anciennes données (nb_passagers = total de la réservation)
+UPDATE attribution a
+SET nb_passagers_assignes = (
+    SELECT r.passenger_nbr
+    FROM reservation r
+    WHERE r.id = a.reservation_id
+)
+WHERE nb_passagers_assignes IS NULL;
+
+-- Rendre la colonne NOT NULL après migration
+ALTER TABLE attribution ALTER COLUMN nb_passagers_assignes SET NOT NULL;
+
+---
+
+6. EXEMPLES DÉTAILLÉS
+
+---
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ EXEMPLE 1 : DIVISION SIMPLE                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+CONTEXTE :
+  Véhicules disponibles :
+    - V1 : 5 places (Diesel, 0 trajet)
+    - V2 : 5 places (Essence, 0 trajet)
+
+  Réservation :
+    - R1 : 8 passagers, lieu départ = IVATO
+
+TRAITEMENT :
+
+  Étape 1 : Chercher véhicule pour R1 (8 passagers)
+  ─────────────────────────────────────────────────
+  - V1 : 5 places < 8 passagers (écart impossible)
+  - V2 : 5 places < 8 passagers (écart impossible)
+
+  → Aucun véhicule n'a 8 places !
+  → ACTIVER LA DIVISION
+
+  Étape 2 : Trouver le véhicule avec écart minimum pour division
+  ──────────────────────────────────────────────────────────────
+  Pour 8 passagers, on cherche le plus grand véhicule disponible :
+  - V1 : 5 places (Diesel) ← GAGNANT (Diesel priorité)
+  - V2 : 5 places (Essence)
+
+  → Assigner 5 passagers de R1 à V1
+  → passagers_restants = 8 - 5 = 3
+
+  Étape 3 : Continuer avec les 3 passagers restants
+  ─────────────────────────────────────────────────
+  Véhicules restants : V2 (5 places)
+
+  - V2 : 5 places >= 3 passagers ✓
+  - écart = 5 - 3 = 2
+
+  → Assigner 3 passagers de R1 à V2
+  → passagers_restants = 0 ✓
+
+RÉSULTAT :
+  ┌──────────────────────────────────────────────────────────────┐
+  │ Attribution 1 : V1 ← R1 (5 passagers sur 8)                  │
+  │ Attribution 2 : V2 ← R1 (3 passagers sur 8)                  │
+  └──────────────────────────────────────────────────────────────┘
+
+Table attribution :
+  | reservation_id | vehicule_id | nb_passagers_assignes |
+  |----------------|-------------|----------------------|
+  | 1              | 1           | 5                    |
+  | 1              | 2           | 3                    |
+
+───────────────────────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ EXEMPLE 2 : DIVISION AVEC REGROUPEMENT                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+CONTEXTE :
+  Véhicules disponibles :
+    - V1 : 12 places (Diesel, 2 trajets)
+    - V2 : 5 places (Diesel, 0 trajet)
+    - V3 : 5 places (Essence, 1 trajet)
+
+  Réservations (triées par passagers DESC) :
+    - R1 : 15 passagers, IVATO
+    - R2 : 4 passagers, IVATO
+    - R3 : 2 passagers, IVATO
+
+TRAITEMENT :
+
+  ══════════════════════════════════════════════════════════════
+  TOUR 1 : Traiter R1 (15 passagers)
+  ══════════════════════════════════════════════════════════════
+
+  Étape 1.1 : Aucun véhicule n'a 15 places → DIVISION
+  ───────────────────────────────────────────────────
+  Plus grand véhicule disponible : V1 (12 places)
+
+  → Assigner 12 passagers de R1 à V1
+  → passagers_restants = 15 - 12 = 3
+  → Retirer V1 des véhicules disponibles
+
+  Étape 1.2 : Continuer avec 3 passagers restants de R1
+  ─────────────────────────────────────────────────────
+  Véhicules restants : V2 (5 places), V3 (5 places)
+
+  Sélection pour 3 passagers :
+  - V2 : écart = 5 - 3 = 2, 0 trajet, Diesel ← GAGNANT
+  - V3 : écart = 5 - 3 = 2, 1 trajet, Essence
+
+  → Assigner 3 passagers de R1 à V2
+  → passagers_restants = 0 ✓
+  → Places restantes dans V2 = 5 - 3 = 2
+
+  Étape 1.3 : REGROUPEMENT dans V2 (2 places restantes)
+  ─────────────────────────────────────────────────────
+  Chercher réservations compatibles avec <= 2 passagers :
+  - R2 : 4 passagers > 2 places ✗
+  - R3 : 2 passagers <= 2 places ✓
+
+  → Ajouter R3 (2 passagers) à V2
+  → Places restantes dans V2 = 0
+  → Marquer R3 comme ASSIGNÉE
+
+  ══════════════════════════════════════════════════════════════
+  TOUR 2 : Traiter R2 (4 passagers) - seule réservation restante
+  ══════════════════════════════════════════════════════════════
+
+  Véhicules restants : V3 (5 places)
+
+  - V3 : 5 places >= 4 passagers ✓
+  - écart = 5 - 4 = 1
+
+  → Assigner 4 passagers de R2 à V3
+  → Places restantes dans V3 = 1
+
+RÉSULTAT FINAL :
+  ┌──────────────────────────────────────────────────────────────┐
+  │ V1 (12 places) : R1 partie 1 (12 passagers)                  │
+  │ V2 (5 places)  : R1 partie 2 (3 passagers) + R3 (2 passagers)│
+  │ V3 (5 places)  : R2 (4 passagers)                            │
+  └──────────────────────────────────────────────────────────────┘
+
+Table attribution :
+  | reservation_id | vehicule_id | nb_passagers_assignes |
+  |----------------|-------------|----------------------|
+  | 1              | 1           | 12                   |
+  | 1              | 2           | 3                    |
+  | 3              | 2           | 2                    |
+  | 2              | 3           | 4                    |
+
+───────────────────────────────────────────────────────────────────────────────
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ EXEMPLE 3 : DIVISION AVEC REPORT PARTIEL                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+CONTEXTE :
+  Véhicules disponibles :
+    - V1 : 5 places (Diesel)
+    - V2 : 5 places (Essence)
+
+  Réservations :
+    - R1 : 12 passagers, IVATO
+
+TRAITEMENT :
+
+  Étape 1 : Traiter R1 (12 passagers)
+  ───────────────────────────────────
+  Aucun véhicule n'a 12 places → DIVISION
+
+  Plus grand disponible : V1 (5 places, Diesel priorité)
+  → Assigner 5 passagers à V1
+  → passagers_restants = 12 - 5 = 7
+
+  Étape 2 : Continuer avec 7 passagers restants
+  ─────────────────────────────────────────────
+  Véhicules restants : V2 (5 places)
+
+  → Assigner 5 passagers à V2
+  → passagers_restants = 7 - 5 = 2
+
+  Étape 3 : Plus de véhicules disponibles !
+  ────────────────────────────────────────
+  passagers_restants = 2
+
+  → REPORTER 2 passagers de R1 à la fenêtre suivante
+
+RÉSULTAT :
+  ┌──────────────────────────────────────────────────────────────┐
+  │ V1 : R1 (5 passagers sur 12)                                 │
+  │ V2 : R1 (5 passagers sur 12)                                 │
+  │ REPORTÉS : R1 (2 passagers restants) → Fenêtre suivante      │
+  └──────────────────────────────────────────────────────────────┘
+
+Table attribution :
+  | reservation_id | vehicule_id | nb_passagers_assignes |
+  |----------------|-------------|----------------------|
+  | 1              | 1           | 5                    |
+  | 1              | 2           | 5                    |
+
+Réservations non assignées (à reporter) :
+  | reservation_id | nb_passagers_restants |
+  |----------------|----------------------|
+  | 1              | 2                    |
+
+---
+
+7. RÈGLES IMPORTANTES
+
+---
+
+RÈGLE 1 : Priorité au remplissage optimal
+─────────────────────────────────────────
+Lors de la division, on choisit toujours le véhicule qui permet
+d'assigner le MAXIMUM de passagers tout en minimisant les places vides.
+
+RÈGLE 2 : Même heure de départ
+──────────────────────────────
+TOUS les véhicules transportant des passagers d'une même réservation
+divisée DOIVENT avoir la MÊME date_heure_depart.
+
+RÈGLE 3 : Traçabilité
+─────────────────────
+Chaque attribution doit indiquer :
+  - reservation_id (réservation d'origine)
+  - nb_passagers_assignes (nombre dans CE véhicule)
+
+Cela permet de reconstituer quelle réservation a été divisée.
+
+RÈGLE 4 : Report cohérent
+─────────────────────────
+Si des passagers ne peuvent pas être assignés :
+  - Les passagers restants sont reportés à la fenêtre suivante
+  - Ils sont traités avec les nouvelles réservations
+  - Le tri par nb_passagers DESC s'applique toujours
+
+RÈGLE 5 : Pas de sur-division
+─────────────────────────────
+On ne divise que si NÉCESSAIRE. Si un véhicule peut prendre tous
+les passagers, on l'utilise (pas de division inutile).
+
+---
+
+8. RÉSUMÉ DES MODIFICATIONS
+
+---
+
+AVANT (Sprint 6) :
+  ❌ 1 réservation = 1 véhicule uniquement
+  ❌ Si nb_places < nb_passagers → réservation entière reportée
+  ❌ Pas de flexibilité pour les grandes réservations
+
+APRÈS (Sprint 7) :
+  ✅ 1 réservation peut utiliser PLUSIEURS véhicules
+  ✅ Division automatique si nécessaire
+  ✅ Maximise le taux d'assignation
+  ✅ Nouvelle colonne nb_passagers_assignes dans attribution
+  ✅ Report uniquement des passagers non assignables
+
+---
+
+9. FICHIERS À MODIFIER
+
+---
+
+1. model/Attribution.java
+   → Ajouter : int nbPassagersAssignes
+
+2. repository/AttributionRepository.java
+   → Modifier save() et saveAll() pour inclure nb_passagers_assignes
+   → Modifier mapAttribution() pour lire nb_passagers_assignes
+
+3. service/PlanningService.java
+   → Modifier trouverMeilleureAttributionAvecRegroupement()
+   → Ajouter : diviserPassagers()
+   → Modifier la logique de regroupement pour supporter la division
+
+4. resources/sql/migration_sprint7.sql
+   → ALTER TABLE pour ajouter nb_passagers_assignes
+
+================================================================================
