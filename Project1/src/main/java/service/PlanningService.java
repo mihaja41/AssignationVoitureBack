@@ -99,10 +99,31 @@ public class PlanningService {
         // 4. Construire les fenêtres de regroupement
         List<FenetreRegroupement> fenetres = construireFenetresRegroupement(reservationsTriees, tempsAttente);
 
+        // DEBUG: Write to temp file
+        StringBuilder debug = new StringBuilder();
+        debug.append("\n========== PLANNING DEBUG ==========\n");
+        debug.append("Date: ").append(date).append("\n");
+        debug.append("Total reservations: ").append(reservationsTriees.size()).append("\n");
+        debug.append("Number of windows: ").append(fenetres.size()).append("\n");
+        for (int i = 0; i < fenetres.size(); i++) {
+            FenetreRegroupement f = fenetres.get(i);
+            debug.append("  Window ").append(i).append(": ").append(f.getStartTime()).append(" -> ").append(f.getEndTime())
+                  .append(" | Reservations: ").append(f.getReservations().size()).append("\n");
+        }
+        debug.append("====================================\n");
+
+        try {
+            java.nio.file.Files.write(java.nio.file.Paths.get("/tmp/planning_debug.log"),
+                debug.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.APPEND);
+        } catch (Exception e) {}
+
         // 5. Traiter chaque fenêtre
         List<Attribution> toutesAttributions = new ArrayList<>();
         List<Reservation> aReporter = new ArrayList<>();
         List<ReservationPartielle> toutesPartielles = new ArrayList<>();  // Sprint 7: NEW
+        Set<Long> globalAssignedReservationIds = new HashSet<>();  // BUGFIX: Track ALL assigned reservations globally
 
         for (int i = 0; i < fenetres.size(); i++) {
             FenetreRegroupement fenetre = fenetres.get(i);
@@ -114,8 +135,29 @@ public class PlanningService {
                 aReporter.clear();
             }
 
+            // BUGFIX Sprint 7: Remove all reservations already assigned in previous windows
+            // This prevents duplicate attributions across multiple time windows
+            List<Reservation> fenetreReservations = new java.util.ArrayList<>(fenetre.getReservations());
+            fenetre.getReservations().clear();
+            for (Reservation r : fenetreReservations) {
+                if (!globalAssignedReservationIds.contains(r.getId())) {
+                    fenetre.addReservation(r);
+                }
+            }
+
+            if (fenetre.getReservations().isEmpty()) {
+                continue;  // Skip empty windows
+            }
+
             // Traiter la fenêtre (utilise la logique existante)
             PlanningResult resultatFenetre = traiterFenetre(fenetre, toutesAttributions, vitesseMoyenne);
+
+            // BUGFIX: Add all newly assigned reservations to global tracking
+            for (Attribution a : resultatFenetre.getAttributions()) {
+                for (Reservation r : a.getReservations()) {
+                    globalAssignedReservationIds.add(r.getId());
+                }
+            }
 
             // Collecter les attributions
             toutesAttributions.addAll(resultatFenetre.getAttributions());
@@ -142,7 +184,53 @@ public class PlanningService {
             }
         }
 
-        return new PlanningResult(toutesAttributions, aReporter, toutesPartielles);  // Sprint 7: Include all partielles
+        // DEBUG: Write early to file to see if this runs
+        try {
+            java.nio.file.Files.write(java.nio.file.Paths.get("/tmp/planning_early.txt"),
+                ("EARLY DEBUG: Reached before dedup with " + toutesAttributions.size() + " attributions\n")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (Exception e) {}
+
+        // Sprint 7: BUGFIX - Remove complete duplicate attributions across windows
+        // Key: vehicule_id ONLY - a vehicle appears only once per day
+        // (Different departure times from different windows = bug, keep first one)
+        List<Attribution> finalDedupedAttributions = new java.util.ArrayList<>();
+        Set<Long> seenVehicules = new java.util.HashSet<>();
+
+        int beforeDedup = toutesAttributions.size();
+        int duplicatesRemoved = 0;
+
+        for (Attribution attr : toutesAttributions) {
+            if (attr.getVehicule() != null) {
+                // Create unique key: just vehicule_id
+                Long vehiculeId = attr.getVehicule().getId();
+
+                // Only add if we haven't seen this vehicle before
+                if (!seenVehicules.contains(vehiculeId)) {
+                    finalDedupedAttributions.add(attr);
+                    seenVehicules.add(vehiculeId);
+                } else {
+                    duplicatesRemoved++;
+                }
+            } else {
+                // Safeguard: add attributions with missing vehicle (shouldn't happen)
+                finalDedupedAttributions.add(attr);
+            }
+        }
+
+        // DEBUG: Write dedup result to file
+        try {
+            String result = "Before: " + beforeDedup + ", After: " + finalDedupedAttributions.size() +
+                          ", Duplicates removed: " + duplicatesRemoved + "\n";
+            java.nio.file.Files.write(java.nio.file.Paths.get("/tmp/planning_dedup.txt"),
+                result.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (Exception e) {}
+
+        return new PlanningResult(finalDedupedAttributions, aReporter, toutesPartielles);  // Sprint 7: Include all partielles
     }
 
     /**
