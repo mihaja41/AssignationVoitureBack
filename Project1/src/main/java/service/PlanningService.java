@@ -4,6 +4,7 @@ import model.Attribution;
 import model.Distance;
 import model.FenetreRegroupement;
 import model.Reservation;
+import model.ReservationPartielle;
 import model.TypeCarburant;
 import model.Vehicule;
 import model.Lieu;
@@ -101,6 +102,7 @@ public class PlanningService {
         // 5. Traiter chaque fenêtre
         List<Attribution> toutesAttributions = new ArrayList<>();
         List<Reservation> aReporter = new ArrayList<>();
+        List<ReservationPartielle> toutesPartielles = new ArrayList<>();  // Sprint 7: NEW
 
         for (int i = 0; i < fenetres.size(); i++) {
             FenetreRegroupement fenetre = fenetres.get(i);
@@ -118,17 +120,29 @@ public class PlanningService {
             // Collecter les attributions
             toutesAttributions.addAll(resultatFenetre.getAttributions());
 
+            // Sprint 7: A.1 - Collecter les réservations partiellement reportées
+            List<ReservationPartielle> partiellesFenetre = resultatFenetre.getReservationsPartielles();
+            if (!partiellesFenetre.isEmpty()) {
+                toutesPartielles.addAll(partiellesFenetre);
+                // Ajouter les passagers restants à reporter pour fenêtre suivante
+                for (ReservationPartielle rp : partiellesFenetre) {
+                    aReporter.add(rp.creerReservationPourFenetresuivante());
+                }
+            }
+
             // Reporter les non assignées vers la prochaine fenêtre
             List<Reservation> nonAssigneesFenetre = resultatFenetre.getReservationsNonAssignees();
             if (!nonAssigneesFenetre.isEmpty() && i < fenetres.size() - 1) {
                 aReporter.addAll(nonAssigneesFenetre);
-            } else {
-                aReporter.addAll(nonAssigneesFenetre);
+            } else if (!nonAssigneesFenetre.isEmpty()) {
+                // Dernière fenêtre : ajouter aux partielles finales
+                for (Reservation r : nonAssigneesFenetre) {
+                    toutesPartielles.add(new ReservationPartielle(r, r.getPassengerNbr()));
+                }
             }
         }
 
-        // Les réservations qui restent dans aReporter sont les non assignées finales
-        return new PlanningResult(toutesAttributions, aReporter);
+        return new PlanningResult(toutesAttributions, aReporter, toutesPartielles);  // Sprint 7: Include all partielles
     }
 
     /**
@@ -216,6 +230,7 @@ public class PlanningService {
 
         List<Attribution> attributionsFenetre = new ArrayList<>();
         List<Reservation> nonAssigneesFenetre = new ArrayList<>();
+        List<ReservationPartielle> reservationsPartielles = new ArrayList<>();  // Sprint 7: NEW
         Set<Long> assignedIds = new HashSet<>();
 
         // Récupérer l'heure de départ de la fenêtre (tous les véhicules partent ensemble)
@@ -270,6 +285,26 @@ public class PlanningService {
 
                 if (!attributionsParDivision.isEmpty()) {
                     attributionsFenetre.addAll(attributionsParDivision);
+
+                    // Sprint 7: A.1 - Calculer les passagers assignés lors de la division
+                    int passagersAssignes = 0;
+                    for (Attribution a : attributionsParDivision) {
+                        Integer nbPass = a.getNbPassagersAssignes();
+                        if (nbPass != null) {
+                            passagersAssignes += nbPass;
+                        } else {
+                            passagersAssignes += a.getTotalPassengers();
+                        }
+                    }
+
+                    int passagersRestants = reservation.getPassengerNbr() - passagersAssignes;
+                    if (passagersRestants > 0) {
+                        // Créer une ReservationPartielle pour les passagers non assignés
+                        ReservationPartielle partielle = new ReservationPartielle(
+                            reservation, passagersRestants);
+                        reservationsPartielles.add(partielle);
+                    }
+
                     assignedIds.add(reservation.getId());
                 } else {
                     nonAssigneesFenetre.add(reservation);
@@ -296,7 +331,7 @@ public class PlanningService {
             }
         }
 
-        return new PlanningResult(attributionsFenetre, nonAssigneesFenetre);
+        return new PlanningResult(attributionsFenetre, nonAssigneesFenetre, reservationsPartielles);  // Sprint 7: Include partielles
     }
 
     /**
@@ -548,6 +583,8 @@ public class PlanningService {
             }
 
             attributionsDivision.add(attribution);
+            // Sprint 7: A.4 - Ajouter à attributionsExistantes pour tracking disponibilité
+            attributionsExistantes.add(attribution);
             passagersRestants -= passagersAssignes;
             vehiculesUsables.remove(vehiculeChoisi);
         }
@@ -1353,15 +1390,53 @@ private Vehicule choisirVehiculeOptimise(List<Vehicule> disponibles, int passeng
     }
 
     /**
+     * Classe interne pour le résultat d'une tentative de division.
+     * Sprint 7 - A.2 : Retourne les attributions créées ET les passagers restants
+     */
+    public static class DivisionResult {
+        private final List<Attribution> attributions;
+        private final int passagersRestants;
+
+        public DivisionResult(List<Attribution> attributions, int passagersRestants) {
+            this.attributions = attributions != null ? attributions : new ArrayList<>();
+            this.passagersRestants = passagersRestants;
+        }
+
+        public List<Attribution> getAttributions() {
+            return attributions;
+        }
+
+        public int getPassagersRestants() {
+            return passagersRestants;
+        }
+
+        public boolean aDesPassagersRestants() {
+            return passagersRestants > 0;
+        }
+    }
+
+    /**
      * Classe interne pour gérer une portion de réservation reportée.
+     * Sprint 7 : Inclut les réservations partiellement assignées
      */
     public static class PlanningResult {
         private final List<Attribution> attributions;
         private final List<Reservation> reservationsNonAssignees;
+        private final List<ReservationPartielle> reservationsPartielles;  // Sprint 7: NEW
 
+        // Constructeur legacy (backward compatibility)
         public PlanningResult(List<Attribution> attributions, List<Reservation> reservationsNonAssignees) {
-            this.attributions = attributions;
-            this.reservationsNonAssignees = reservationsNonAssignees;
+            this(attributions, reservationsNonAssignees, new ArrayList<>());
+        }
+
+        // Constructeur complet
+        public PlanningResult(
+                List<Attribution> attributions,
+                List<Reservation> reservationsNonAssignees,
+                List<ReservationPartielle> reservationsPartielles) {
+            this.attributions = attributions != null ? attributions : new ArrayList<>();
+            this.reservationsNonAssignees = reservationsNonAssignees != null ? reservationsNonAssignees : new ArrayList<>();
+            this.reservationsPartielles = reservationsPartielles != null ? reservationsPartielles : new ArrayList<>();
         }
 
         public List<Attribution> getAttributions() {
@@ -1370,6 +1445,41 @@ private Vehicule choisirVehiculeOptimise(List<Vehicule> disponibles, int passeng
 
         public List<Reservation> getReservationsNonAssignees() {
             return reservationsNonAssignees;
+        }
+
+        public List<ReservationPartielle> getReservationsPartielles() {
+            return reservationsPartielles;
+        }
+
+        /**
+         * Retourne le nombre total de passagers assignés.
+         */
+        public int getTotalPassagersAssignes() {
+            int total = 0;
+            for (Attribution a : attributions) {
+                Integer nbPass = a.getNbPassagersAssignes();
+                if (nbPass != null) {
+                    total += nbPass;
+                } else {
+                    total += a.getTotalPassengers();
+                }
+            }
+            return total;
+        }
+
+        /**
+         * Retourne le nombre total de passagers reportés.
+         */
+        public int getTotalPassagersReportes() {
+            int total = 0;
+            for (ReservationPartielle rp : reservationsPartielles) {
+                total += rp.getPassagersRestants();
+            }
+            // Ajouter aussi les réservations entièrement non-assignées
+            for (Reservation r : reservationsNonAssignees) {
+                total += r.getPassengerNbr();
+            }
+            return total;
         }
     }
 }

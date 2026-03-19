@@ -3,6 +3,7 @@
 <%@ page import="model.Attribution" %>
 <%@ page import="model.TrajetCar" %>
 <%@ page import="model.Reservation" %>
+<%@ page import="model.ReservationPartielle" %>
 <%@ page import="java.time.format.DateTimeFormatter" %>
 <%@ page import="java.math.BigDecimal" %>
 <%@ page import="java.util.stream.Collectors" %>
@@ -371,11 +372,13 @@
     String error = (String) request.getAttribute("error");
     List<Attribution> attributions = (List<Attribution>) request.getAttribute("attributions");
     List<Reservation> reservationsNonAssignees = (List<Reservation>) request.getAttribute("reservationsNonAssignees");
+    List<ReservationPartielle> reservationsPartielles = (List<ReservationPartielle>) request.getAttribute("reservationsPartielles");
     DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
     // Sprint 7 : Correction du comptage (compter réservations DISTINCT + passagers corrects)
     int nbAssigned = 0;
     int totalPassagersAssigned = 0;
+    int nbPassagersReportes = 0;  // Sprint 7: NEW - Passagers reportés
     Set<Long> assignedReservationIds = new HashSet<>();
 
     if (attributions != null) {
@@ -393,7 +396,22 @@
         }
         nbAssigned = assignedReservationIds.size();  // Nombre DISTINCT de réservations
     }
+
+    // Sprint 7: B.3 - Calculer les passagers reportés
+    if (reservationsPartielles != null) {
+        for (ReservationPartielle rp : reservationsPartielles) {
+            nbPassagersReportes += rp.getPassagersRestants();
+        }
+    }
+    // Ajouter aussi les réservations entièrement non-assignées
+    if (reservationsNonAssignees != null) {
+        for (Reservation r : reservationsNonAssignees) {
+            nbPassagersReportes += r.getPassengerNbr();
+        }
+    }
+
     int nbUnassigned = (reservationsNonAssignees != null) ? reservationsNonAssignees.size() : 0;
+    int nbPartielles = (reservationsPartielles != null) ? reservationsPartielles.size() : 0;  // Sprint 7: NEW
     int nbGroupes = (attributions != null) ? attributions.size() : 0;
 %>
 
@@ -433,7 +451,7 @@
     <!-- KPI STRIP -->
     <div class="kpi-strip">
         <div class="kpi-card neutral">
-            <div class="kpi-value"><%= nbAssigned + nbUnassigned %></div>
+            <div class="kpi-value"><%= nbAssigned + nbUnassigned + nbPartielles %></div>
             <div class="kpi-label">Réservations totales</div>
         </div>
         <div class="kpi-card green">
@@ -445,8 +463,8 @@
             <div class="kpi-label">Non assignées</div>
         </div>
         <div class="kpi-card gold">
-            <div class="kpi-value"><%= nbGroupes %></div>
-            <div class="kpi-label">Véhicules utilisés</div>
+            <div class="kpi-value"><%= nbPassagersReportes %></div>
+            <div class="kpi-label">Passagers reportés</div>
         </div>
     </div>
 
@@ -663,6 +681,53 @@
                 <div class="empty-state-icon">📋</div>
                 <div class="empty-state-text">Aucune attribution pour cette date.</div>
             </div>
+        </div>
+    <% } %>
+
+    <!-- ══ SECTION : RÉSERVATIONS PARTIELLEMENT REPORTÉES ══ - Sprint 7: B.1 -->
+    <% if (reservationsPartielles != null && !reservationsPartielles.isEmpty()) { %>
+        <div class="section-header">
+            <h2 class="section-title">Réservations partiellement reportées</h2>
+            <span class="section-pill" style="background:#fff3cd; color:#856404;">
+                <%= nbPartielles %> réservation<%= nbPartielles > 1 ? "s" : "" %>
+            </span>
+        </div>
+        <div class="section-divider"></div>
+
+        <div class="alert alert-info">
+            <span class="alert-icon">ℹ</span>
+            Ces réservations ont été partiellement assignées. Les passagers restants sont reportés à la fenêtre suivante.
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr style="background:#856404;">
+                        <th>Réservation</th>
+                        <th>Client</th>
+                        <th>Assignés</th>
+                        <th>Restants</th>
+                        <th>Total original</th>
+                        <th>Statut</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% for (ReservationPartielle rp : reservationsPartielles) { %>
+                        <tr class="row-main">
+                            <td><span style="font-weight:600;">#<%= rp.getReservationOrigine().getId() %></span></td>
+                            <td><%= rp.getReservationOrigine().getCustomerId() %></td>
+                            <td><span style="color:var(--accent); font-weight:600;"><%= rp.getPassagersAssignes() %></span></td>
+                            <td><span style="color:var(--warn); font-weight:600;">📊 <%= rp.getPassagersRestants() %></span></td>
+                            <td><%= rp.getPassagersTotalOrigine() %></td>
+                            <td>
+                                <span class="badge" style="background:#fff3cd; color:#856404;">
+                                    Partiel
+                                </span>
+                            </td>
+                        </tr>
+                    <% } %>
+                </tbody>
+            </table>
         </div>
     <% } %>
 

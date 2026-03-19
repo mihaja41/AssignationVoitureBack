@@ -60,6 +60,9 @@ public class AttributionRepository {
     /**
      * Enregistrer plusieurs attributions (pour un véhicule avec plusieurs réservations regroupées).
      * Sprint 7: Inclut nb_passagers_assignes pour supporter la division
+     *
+     * A.3 - CORRECTION: nbPassagersAssignes s'applique UNIQUEMENT à la réservation divisée
+     * Pour les réservations regroupées, toujours utiliser reservation.getPassengerNbr()
      */
     public void saveAll(Attribution attribution) throws SQLException {
         String sql = "INSERT INTO attribution (reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut, nb_passagers_assignes) " +
@@ -67,6 +70,8 @@ public class AttributionRepository {
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            Reservation reservationPrincipale = attribution.getReservation();
 
             // Enregistrer une ligne pour chaque réservation du regroupement
             for (Reservation reservation : attribution.getReservations()) {
@@ -76,11 +81,15 @@ public class AttributionRepository {
                 stmt.setTimestamp(4, Timestamp.valueOf(attribution.getDateHeureRetour()));
                 stmt.setString(5, attribution.getStatut());
 
-                // Sprint 7: Inclure nb_passagers_assignes
-                if (attribution.getNbPassagersAssignes() != null) {
+                // Sprint 7: A.3 - CORRECTION
+                // nbPassagersAssignes s'applique SEULEMENT à la réservation principale (divisée)
+                // Pour les autres (regroupées), utiliser toujours leur nombre de passagers
+                if (reservation.getId().equals(reservationPrincipale.getId()) &&
+                    attribution.getNbPassagersAssignes() != null) {
+                    // Réservation principale avec division
                     stmt.setInt(6, attribution.getNbPassagersAssignes());
                 } else {
-                    // Par défaut: nombre total de passagers de cette réservation
+                    // Réservation regroupée OU pas de division
                     stmt.setInt(6, reservation.getPassengerNbr());
                 }
 
