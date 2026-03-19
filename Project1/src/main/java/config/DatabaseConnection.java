@@ -10,12 +10,12 @@ public class DatabaseConnection {
     private static final String URL ="jdbc:postgresql://localhost:5432/hotel_reservation";
     private static final String USER = "postgres";  
     // private static final String PASSWORD = "a";  
-    private static final String PASSWORD = "fanjatiana";  
+    private static final String PASSWORD = "sariaka";  
     // private static final String URL = "jdbc:postgresql://shinkansen.proxy.rlwy.net:47612/railway";
     // private static final String URL ="jdbc:postgresql://localhost:5432/hotel_reservation";
     // private static final String USER = "postgres";  
     // // private static final String PASSWORD = "UpTsWiuCcoDGchThbfucimMnDrSBEefJ";  
-    // private static final String PASSWORD = "fanjatiana";  
+    // private static final String PASSWORD = "sariaka";  
 
     static {
         try {

@@ -3,8 +3,12 @@
 <%@ page import="model.Attribution" %>
 <%@ page import="model.TrajetCar" %>
 <%@ page import="model.Reservation" %>
+<%@ page import="model.ReservationPartielle" %>
 <%@ page import="java.time.format.DateTimeFormatter" %>
 <%@ page import="java.math.BigDecimal" %>
+<%@ page import="java.util.stream.Collectors" %>
+<%@ page import="java.util.HashMap" %>
+<%@ page import="java.util.Map" %>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -368,15 +372,46 @@
     String error = (String) request.getAttribute("error");
     List<Attribution> attributions = (List<Attribution>) request.getAttribute("attributions");
     List<Reservation> reservationsNonAssignees = (List<Reservation>) request.getAttribute("reservationsNonAssignees");
+    List<ReservationPartielle> reservationsPartielles = (List<ReservationPartielle>) request.getAttribute("reservationsPartielles");
     DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
+    // Sprint 7 : Correction du comptage (compter réservations DISTINCT + passagers corrects)
     int nbAssigned = 0;
+    int totalPassagersAssigned = 0;
+    int nbPassagersReportes = 0;  // Sprint 7: NEW - Passagers reportés
+    Set<Long> assignedReservationIds = new HashSet<>();
+
     if (attributions != null) {
         for (Attribution a : attributions) {
-            nbAssigned += a.getReservations().size();
+            for (Reservation r : a.getReservations()) {
+                assignedReservationIds.add(r.getId());
+                // Sprint 7 : Utiliser nbPassagersAssignes (nombre dans CE véhicule), fallback to getTotalPassengers()
+                Integer nbPass = a.getNbPassagersAssignes();
+                if (nbPass != null) {
+                    totalPassagersAssigned += nbPass;  // ✅ Safe unboxing
+                } else {
+                    totalPassagersAssigned += a.getTotalPassengers();
+                }
+            }
+        }
+        nbAssigned = assignedReservationIds.size();  // Nombre DISTINCT de réservations
+    }
+
+    // Sprint 7: B.3 - Calculer les passagers reportés
+    if (reservationsPartielles != null) {
+        for (ReservationPartielle rp : reservationsPartielles) {
+            nbPassagersReportes += rp.getPassagersRestants();
         }
     }
+    // Ajouter aussi les réservations entièrement non-assignées
+    if (reservationsNonAssignees != null) {
+        for (Reservation r : reservationsNonAssignees) {
+            nbPassagersReportes += r.getPassengerNbr();
+        }
+    }
+
     int nbUnassigned = (reservationsNonAssignees != null) ? reservationsNonAssignees.size() : 0;
+    int nbPartielles = (reservationsPartielles != null) ? reservationsPartielles.size() : 0;  // Sprint 7: NEW
     int nbGroupes = (attributions != null) ? attributions.size() : 0;
 %>
 
@@ -416,7 +451,7 @@
     <!-- KPI STRIP -->
     <div class="kpi-strip">
         <div class="kpi-card neutral">
-            <div class="kpi-value"><%= nbAssigned + nbUnassigned %></div>
+            <div class="kpi-value"><%= nbAssigned + nbUnassigned + nbPartielles %></div>
             <div class="kpi-label">Réservations totales</div>
         </div>
         <div class="kpi-card green">
@@ -428,8 +463,8 @@
             <div class="kpi-label">Non assignées</div>
         </div>
         <div class="kpi-card gold">
-            <div class="kpi-value"><%= nbGroupes %></div>
-            <div class="kpi-label">Véhicules utilisés</div>
+            <div class="kpi-value"><%= nbPassagersReportes %></div>
+            <div class="kpi-label">Passagers reportés</div>
         </div>
     </div>
 
@@ -458,8 +493,9 @@
                 <tbody>
                     <% for (Attribution attr : attributions) {
                         List<Reservation> grouped = attr.getReservations();
-                        int totalPass = attr.getTotalPassengers();
-                        int placesRestantes = attr.getPlacesRestantes();
+                        // Sprint 7 : Utiliser nbPassagersAssignes (passagers dans CE véhicule)
+                        int totalPass = attr.getNbPassagersAssignes() != null ? attr.getNbPassagersAssignes() : attr.getTotalPassengers();
+                        int placesRestantes = attr.getVehicule() != null ? attr.getVehicule().getNbPlace() - totalPass : 0;
                         int totalPlaces = attr.getVehicule() != null ? attr.getVehicule().getNbPlace() : 1;
                         double fillPct = totalPlaces > 0 ? (double) totalPass / totalPlaces * 100 : 0;
                         List<TrajetCar> trajects = attr.getDetailTraject();
@@ -492,15 +528,56 @@
 
                         <!-- Réservations -->
                         <td>
+                            <%
+                                // Sprint 7 : Détection de division
+                                // Une division = même réservation dans plusieurs véhicules
+                                Map<Long, Long> reservationCount = new HashMap<>();
+                                if (attributions != null) {
+                                    for (Attribution a : attributions) {
+                                        for (Reservation r : a.getReservations()) {
+                                            reservationCount.put(r.getId(),
+                                                reservationCount.getOrDefault(r.getId(), 0L) + 1);
+                                        }
+                                    }
+                                }
+                            %>
                             <% for (Reservation r : grouped) { %>
                                 <div class="resa-line">
                                     <span style="font-weight:600;">#<%= r.getId() %></span>
                                     &ensp;<span style="color:var(--ink-light)"><%= r.getCustomerId() %></span>
-                                    &ensp;<span style="color:var(--ink-faint);font-size:12px;"><%= r.getPassengerNbr() %> pass.</span>
+
+                                    <!-- Sprint 7 : Afficher ratio si division -->
+                                    <% if (reservationCount.getOrDefault(r.getId(), 0L) > 1 &&
+                                            totalPass < r.getPassengerNbr()) { %>
+                                        &ensp;<span style="color:var(--gold); font-weight:600; font-size:11px;">
+                                            [<%= totalPass %>/<%= r.getPassengerNbr() %> pass.]
+                                        </span>
+                                    <% } else { %>
+                                        &ensp;<span style="color:var(--ink-faint);font-size:12px;">
+                                            <%= r.getPassengerNbr() %> pass.
+                                        </span>
+                                    <% } %>
                                 </div>
                             <% } %>
+
+                            <!-- Badge regroupement (existant) -->
                             <% if (grouped.size() > 1) { %>
                                 <span class="grouped-note">↦ <%= grouped.size() %> groupées</span>
+                            <% } %>
+
+                            <!-- Sprint 7 : Badge division si applicable -->
+                            <%
+                                long divisionCount = 0;
+                                if (grouped != null && !grouped.isEmpty()) {
+                                    divisionCount = reservationCount.getOrDefault(grouped.get(0).getId(), 0L);
+                                }
+                            %>
+                            <% if (divisionCount > 1) { %>
+                                <span style="display:inline-block; margin-top:6px; padding:3px 8px;
+                                           border-radius:4px; background:#fff3cd; color:#856404;
+                                           font-size:10px; font-weight:600; letter-spacing:0.05em;">
+                                    📊 DIVISÉE ×<%= divisionCount %>
+                                </span>
                             <% } %>
                         </td>
 
@@ -604,6 +681,53 @@
                 <div class="empty-state-icon">📋</div>
                 <div class="empty-state-text">Aucune attribution pour cette date.</div>
             </div>
+        </div>
+    <% } %>
+
+    <!-- ══ SECTION : RÉSERVATIONS PARTIELLEMENT REPORTÉES ══ - Sprint 7: B.1 -->
+    <% if (reservationsPartielles != null && !reservationsPartielles.isEmpty()) { %>
+        <div class="section-header">
+            <h2 class="section-title">Réservations partiellement reportées</h2>
+            <span class="section-pill" style="background:#fff3cd; color:#856404;">
+                <%= nbPartielles %> réservation<%= nbPartielles > 1 ? "s" : "" %>
+            </span>
+        </div>
+        <div class="section-divider"></div>
+
+        <div class="alert alert-info">
+            <span class="alert-icon">ℹ</span>
+            Ces réservations ont été partiellement assignées. Les passagers restants sont reportés à la fenêtre suivante.
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr style="background:#856404;">
+                        <th>Réservation</th>
+                        <th>Client</th>
+                        <th>Assignés</th>
+                        <th>Restants</th>
+                        <th>Total original</th>
+                        <th>Statut</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% for (ReservationPartielle rp : reservationsPartielles) { %>
+                        <tr class="row-main">
+                            <td><span style="font-weight:600;">#<%= rp.getReservationOrigine().getId() %></span></td>
+                            <td><%= rp.getReservationOrigine().getCustomerId() %></td>
+                            <td><span style="color:var(--accent); font-weight:600;"><%= rp.getPassagersAssignes() %></span></td>
+                            <td><span style="color:var(--warn); font-weight:600;">📊 <%= rp.getPassagersRestants() %></span></td>
+                            <td><%= rp.getPassagersTotalOrigine() %></td>
+                            <td>
+                                <span class="badge" style="background:#fff3cd; color:#856404;">
+                                    Partiel
+                                </span>
+                            </td>
+                        </tr>
+                    <% } %>
+                </tbody>
+            </table>
         </div>
     <% } %>
 

@@ -27,10 +27,11 @@ public class PlanningController {
 
     /**
      * Page 2 : Générer et afficher le planning pour une date donnée.
-     * 
+     *
      * Retourne un ModelView contenant :
      *   - "attributions" : liste des Attribution assignées (véhicule + réservation + horaires calculés)
      *   - "reservationsNonAssignees" : liste des Reservation sans véhicule
+     *   - "reservationsPartielles" : liste des ReservationPartielle (Sprint 7)
      *   - "selectedDate" : la date saisie
      */
     @PostRouteMapping(value = "/planning/generate")
@@ -45,6 +46,8 @@ public class PlanningController {
 
             mv.setData("attributions", result.getAttributions());
             mv.setData("reservationsNonAssignees", result.getReservationsNonAssignees());
+            // Sprint 7: B.1 - Passer les réservations partiellement reportées à la vue
+            mv.setData("reservationsPartielles", result.getReservationsPartielles());
             mv.setData("selectedDate", selectedDate.toString());
 
         } catch (Exception e) {

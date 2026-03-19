@@ -1,0 +1,381 @@
+================================================================================
+RÉSULTATS ATTENDUS - TESTS SPRINT 5 & SPRINT 6
+================================================================================
+
+PARAMÈTRES :
+- vitesse_moyenne = 50 km/h
+- temps_attente = 30 minutes
+- distance IVATO → Hotel1 = 50 km (aller), 100 km (aller-retour)
+- durée trajet = 100 km / 50 km/h = 2 heures
+
+VÉHICULES DISPONIBLES :
+| ID | Référence  | Places | Carburant |
+|----|------------|--------|-----------|
+| 1  | vehicule1  | 12     | D (Diesel)|
+| 2  | vehicule2  | 5      | Es        |
+| 3  | vehicule3  | 5      | D (Diesel)|
+| 4  | vehicule4  | 12     | Es        |
+
+================================================================================
+RAPPEL : ALGORITHME DE TRAITEMENT
+================================================================================
+
+1. Les réservations sont triées par arrival_date ASC
+2. On construit des fenêtres [start, start + temps_attente]
+3. DANS chaque fenêtre, les réservations sont triées par passagers DÉCROISSANT
+4. Chaque réservation est traitée INDIVIDUELLEMENT (pas en somme totale)
+5. Critères de sélection véhicule :
+   a) Capacité suffisante (nb_places >= passagers)
+   b) Écart minimum (places - passagers)
+   c) Moins de trajets effectués
+   d) Priorité DIESEL
+   e) Aléatoire si égalité totale
+6. Après assignation, on regroupe les autres réservations compatibles
+   dans les places restantes du même véhicule
+
+================================================================================
+SCENARIO 1 : FENÊTRES DE REGROUPEMENT
+Date : 2026-03-20
+================================================================================
+
+FENÊTRE 1 : [08:00 - 08:30]
+-------------------------------
+Réservations dans cette fenêtre (triées par passagers DESC) :
+1. TEST_F1_R1 : 4 passagers, arrivée 08:00
+2. TEST_F1_R2 : 3 passagers, arrivée 08:15
+3. TEST_F1_R3 : 2 passagers, arrivée 08:25
+
+Heure de départ calculée : MAX(arrival_date) = 08:25
+
+TRAITEMENT INDIVIDUEL :
+-----------------------
+Étape 1 : Traiter TEST_F1_R1 (4 passagers)
+  Véhicules candidats :
+  | Véhicule | Places | Écart | Trajets | Carburant |
+  |----------|--------|-------|---------|-----------|
+  | V1       | 12     | 8     | 0       | Diesel    | ← GAGNANT (Diesel priorité)
+  | V2       | 5      | 1     | 0       | Essence   |
+  | V3       | 5      | 1     | 0       | Diesel    |
+  | V4       | 12     | 8     | 0       | Essence   |
+
+  → Écart minimal = 1 (V2 et V3)
+  → Même trajets (0) → Diesel priorité → V3 choisi
+
+  Véhicule 3 assigné à TEST_F1_R1
+  Places restantes : 5 - 4 = 1
+
+  Regroupement : chercher réservations avec <= 1 passager
+  → Aucune réservation compatible (R2=3p, R3=2p > 1 place)
+
+Étape 2 : Traiter TEST_F1_R2 (3 passagers)
+  Véhicules candidats (V3 déjà utilisé dans cette fenêtre) :
+  | Véhicule | Places | Écart | Trajets | Carburant |
+  |----------|--------|-------|---------|-----------|
+  | V1       | 12     | 9     | 0       | Diesel    |
+  | V2       | 5      | 2     | 0       | Essence   |
+  | V4       | 12     | 9     | 0       | Essence   |
+
+  → Écart minimal = 2 (V2)
+  → V2 choisi (seul avec écart min)
+
+  Véhicule 2 assigné à TEST_F1_R2
+  Places restantes : 5 - 3 = 2
+
+  Regroupement : chercher réservations avec <= 2 passagers
+  → TEST_F1_R3 (2p) peut être ajouté! ✓
+
+Étape 3 : TEST_F1_R3 déjà regroupé avec R2
+
+RÉSULTAT FENÊTRE 1 :
+→ Véhicule 3 (5 places, Diesel) : TEST_F1_R1 (4 passagers)
+  - Départ : 08:25
+  - Retour : 08:25 + 2h = 10:25
+
+→ Véhicule 2 (5 places, Essence) : TEST_F1_R2 + TEST_F1_R3 (5 passagers total)
+  - Départ : 08:25
+  - Retour : 08:25 + 2h = 10:25
+
+--------------------------------------------------------------------------------
+
+FENÊTRE 2 : [09:00 - 09:30]
+-------------------------------
+Réservations (triées par passagers DESC) :
+1. TEST_F2_R1 : 5 passagers, arrivée 09:00
+2. TEST_F2_R2 : 4 passagers, arrivée 09:20
+
+Heure de départ : MAX(arrival_date) = 09:20
+
+TRAITEMENT :
+Étape 1 : Traiter TEST_F2_R1 (5 passagers)
+  Véhicules disponibles à 09:20 :
+  (V2 et V3 reviennent à 10:25 > 09:20 → INDISPONIBLES)
+  | Véhicule | Places | Écart | Trajets | Carburant |
+  |----------|--------|-------|---------|-----------|
+  | V1       | 12     | 7     | 0       | Diesel    | ← GAGNANT
+  | V4       | 12     | 7     | 0       | Essence   |
+
+  → Écart = 7 pour les deux, même trajets → Diesel priorité → V1
+
+  Véhicule 1 assigné à TEST_F2_R1
+  Places restantes : 12 - 5 = 7
+
+  Regroupement : TEST_F2_R2 (4p) peut être ajouté! ✓
+
+RÉSULTAT FENÊTRE 2 :
+→ Véhicule 1 (12 places, Diesel) : TEST_F2_R1 + TEST_F2_R2 (9 passagers)
+  - Départ : 09:20
+  - Retour : 09:20 + 2h = 11:20
+
+================================================================================
+SCENARIO 2 : RETOUR DE VÉHICULE DANS LA FENÊTRE
+Date : 2026-03-20
+================================================================================
+
+PRÉALABLE : Attribution simulée
+- Véhicule 1 : départ 08:25, retour 10:15
+
+FENÊTRE 3 : [10:00 - 10:30]
+-------------------------------
+Véhicule 1 : retour 10:15 ∈ [10:00, 10:30] → DISPONIBLE dans fenêtre!
+
+Réservations (triées par passagers DESC) :
+1. TEST_F3_R1 : 10 passagers, arrivée 10:00 (besoin ≥ 10 places)
+2. TEST_F3_R2 : 3 passagers, arrivée 10:10
+
+Heure de départ : MAX(arrival_date) = 10:10
+MAIS Véhicule 1 revient à 10:15 > 10:10 → heure_depart = 10:15
+
+TRAITEMENT :
+Étape 1 : Traiter TEST_F3_R1 (10 passagers)
+  Seuls V1 et V4 ont >= 10 places
+  V4 directement disponible
+  V1 revient à 10:15 (DANS la fenêtre) → DISPONIBLE
+
+  | Véhicule | Places | Écart | Trajets         | Carburant |
+  |----------|--------|-------|-----------------|-----------|
+  | V1       | 12     | 2     | 1 (trajet 08:25)| Diesel    | ← GAGNANT (écart min)
+  | V4       | 12     | 2     | 0               | Essence   |
+
+  → Écart = 2 pour les deux
+  → V4 a moins de trajets (0 < 1) → V4 choisi !
+
+  Véhicule 4 assigné à TEST_F3_R1
+  Places restantes : 12 - 10 = 2
+
+  Regroupement : TEST_F3_R2 (3p) > 2 places → NON
+
+Étape 2 : Traiter TEST_F3_R2 (3 passagers)
+  Véhicules disponibles : V1 (revient 10:15), V2, V3
+
+  | Véhicule | Places | Écart | Trajets | Carburant |
+  |----------|--------|-------|---------|-----------|
+  | V1       | 12     | 9     | 1       | Diesel    |
+  | V2       | 5      | 2     | 0       | Essence   |
+  | V3       | 5      | 2     | 0       | Diesel    | ← GAGNANT
+
+  → Écart min = 2 (V2 et V3)
+  → Même trajets (0) → Diesel priorité → V3
+
+RÉSULTAT FENÊTRE 3 :
+→ Véhicule 4 (12 places, Essence) : TEST_F3_R1 (10 passagers)
+  - Départ : 10:15 (attend retour V1 si nécessaire, mais ici V4 utilisé)
+  - Retour : 10:15 + 2h = 12:15
+
+→ Véhicule 3 (5 places, Diesel) : TEST_F3_R2 (3 passagers)
+  - Départ : 10:15
+  - Retour : 10:15 + 2h = 12:15
+
+================================================================================
+SCENARIO 3 : ÉQUILIBRAGE DES TRAJETS
+Date : 2026-03-21
+================================================================================
+
+Historique des trajets (depuis table attribution) :
+| Véhicule   | Nb trajets |
+|------------|------------|
+| vehicule1  | 5          |
+| vehicule2  | 1          |
+| vehicule3  | 0          | ← LE MOINS UTILISÉ
+| vehicule4  | 3          |
+
+Réservation TEST_EQUI_R1 : 4 passagers
+
+TRAITEMENT :
+  | Véhicule | Places | Écart | Trajets | Carburant |
+  |----------|--------|-------|---------|-----------|
+  | V1       | 12     | 8     | 5       | Diesel    |
+  | V2       | 5      | 1     | 1       | Essence   |
+  | V3       | 5      | 1     | 0       | Diesel    | ← GAGNANT
+  | V4       | 12     | 8     | 3       | Essence   |
+
+  → Écart minimal = 1 (V2 et V3)
+  → V3 a moins de trajets (0 < 1) → V3 choisi!
+
+RÉSULTAT :
+→ Véhicule 3 (5 places, Diesel, 0 trajet) : TEST_EQUI_R1
+  - Raison : Écart minimal (1) ET moins de trajets (0)
+
+================================================================================
+SCENARIO 4 : PRIORITÉ DIESEL (même trajets)
+Date : 2026-03-22
+================================================================================
+
+Supposons que V2 et V3 ont le MÊME nombre de trajets (0).
+
+Réservation TEST_DIESEL_R1 : 4 passagers
+
+TRAITEMENT :
+  | Véhicule | Places | Écart | Trajets | Carburant |
+  |----------|--------|-------|---------|-----------|
+  | V2       | 5      | 1     | 0       | Essence   |
+  | V3       | 5      | 1     | 0       | Diesel    | ← GAGNANT
+
+  → Écart = 1, Trajets = 0 → Égalité → Diesel priorité → V3
+
+RÉSULTAT :
+→ Véhicule 3 (5 places, Diesel) : TEST_DIESEL_R1
+  - Raison : À égalité, Diesel prioritaire
+
+================================================================================
+SCENARIO 5 : REPORT DES RÉSERVATIONS NON ASSIGNÉES
+Date : 2026-03-23
+================================================================================
+
+FENÊTRE : [11:00 - 11:30]
+
+Réservations (triées par passagers DESC) :
+| # | Réservation       | Passagers |
+|---|-------------------|-----------|
+| 1 | TEST_SURCHARGE_R1 | 12        |
+| 2 | TEST_SURCHARGE_R2 | 12        |
+| 3 | TEST_SURCHARGE_R3 | 10        |
+| 4 | TEST_SURCHARGE_R4 | 8         |
+| 5 | TEST_SURCHARGE_R5 | 5         |
+
+TRAITEMENT :
+Étape 1 : TEST_SURCHARGE_R1 (12 passagers)
+  → Seuls V1 et V4 ont 12 places
+  → V1 (Diesel) choisi
+  → Places restantes : 0 (aucun regroupement possible)
+
+Étape 2 : TEST_SURCHARGE_R2 (12 passagers)
+  → V4 choisi (V1 déjà assigné)
+  → Places restantes : 0
+
+Étape 3 : TEST_SURCHARGE_R3 (10 passagers)
+  → Besoin ≥ 10 places, mais V1 et V4 déjà utilisés
+  → V2 (5 places) et V3 (5 places) insuffisants
+  → ❌ NON ASSIGNABLE → REPORTÉE
+
+Étape 4 : TEST_SURCHARGE_R4 (8 passagers)
+  → Besoin ≥ 8 places, V2 et V3 insuffisants
+  → ❌ NON ASSIGNABLE → REPORTÉE
+
+Étape 5 : TEST_SURCHARGE_R5 (5 passagers)
+  → V2 ou V3 peuvent accepter (5 places)
+  → V3 (Diesel) choisi
+  → Places restantes : 0
+
+RÉSULTAT FENÊTRE :
+→ Assignées :
+  - Véhicule 1 : TEST_SURCHARGE_R1 (12 passagers)
+  - Véhicule 4 : TEST_SURCHARGE_R2 (12 passagers)
+  - Véhicule 3 : TEST_SURCHARGE_R5 (5 passagers)
+
+→ NON ASSIGNÉES (reportées vers prochaine fenêtre) :
+  - TEST_SURCHARGE_R3 : 10 passagers
+  - TEST_SURCHARGE_R4 : 8 passagers
+
+================================================================================
+SCENARIO 6 : VALIDATION CRITIQUE - AUCUNE RÉSERVATION ASSIGNABLE
+Date : 2026-03-24
+================================================================================
+
+FENÊTRE : [08:00 - 08:30]
+
+Réservations :
+- TEST_IMPOSSIBLE_R1 : 15 passagers (> 12 places max)
+- TEST_IMPOSSIBLE_R2 : 20 passagers (> 12 places max)
+
+TRAITEMENT :
+→ Aucun véhicule n'a >= 15 places
+→ Les 2 réservations sont NON ASSIGNABLES
+
+RÉSULTAT :
+→ AUCUNE attribution créée pour cette fenêtre
+→ PAS de départ (règle : un départ n'existe que si ≥ 1 réservation assignée)
+→ Les 2 réservations sont reportées vers la prochaine fenêtre
+
+================================================================================
+SCENARIO 7 : REGROUPEMENT INTRA-FENÊTRE
+Date : 2026-03-25
+================================================================================
+
+FENÊTRE : [08:00 - 08:30]
+
+Réservations (triées par passagers DESC) :
+| # | Réservation    | Passagers |
+|---|----------------|-----------|
+| 1 | TEST_GROUPE_R2 | 4         |
+| 2 | TEST_GROUPE_R3 | 4         |
+| 3 | TEST_GROUPE_R1 | 3         |
+
+TRAITEMENT :
+Étape 1 : TEST_GROUPE_R2 (4 passagers)
+  → V3 (5 places, Diesel, écart=1) choisi
+  → Places restantes : 1
+  → Regroupement : aucune réservation avec <= 1 passager
+
+Étape 2 : TEST_GROUPE_R3 (4 passagers)
+  → V2 (5 places, écart=1) choisi
+  → Places restantes : 1
+  → Regroupement : aucune réservation avec <= 1 passager
+
+Étape 3 : TEST_GROUPE_R1 (3 passagers)
+  → V1 (12 places, Diesel, écart=9) vs V4 (12 places, écart=9)
+  → V1 (Diesel) choisi
+  → Places restantes : 9
+  → Aucune autre réservation non assignée
+
+RÉSULTAT :
+→ Véhicule 3 (5 places, Diesel) : TEST_GROUPE_R2 (4 passagers)
+→ Véhicule 2 (5 places, Essence) : TEST_GROUPE_R3 (4 passagers)
+→ Véhicule 1 (12 places, Diesel) : TEST_GROUPE_R1 (3 passagers)
+
+NOTE : Dans ce cas, 3 véhicules sont utilisés car les écarts ne permettent
+pas un meilleur regroupement. Si nous avions utilisé V1 dès le départ
+pour R2 (4p), nous aurions pu regrouper les 3 réservations (4+4+3=11 ≤ 12).
+Mais l'algorithme choisit toujours l'écart MINIMUM en premier.
+
+================================================================================
+RÉSUMÉ DES TESTS
+================================================================================
+
+| Scénario | Fonctionnalité testée              | Vérification                        |
+|----------|-------------------------------------|-------------------------------------|
+| 1        | Fenêtres de regroupement            | [start, start+30min]                |
+| 2        | Retour véhicule dans fenêtre        | date_retour ∈ [start, end]          |
+| 3        | Équilibrage trajets                 | Préférer véhicule avec moins trajets|
+| 4        | Priorité Diesel                     | Diesel > Essence à égalité          |
+| 5        | Report non assignées                | Réservations passent fenêtre suivante|
+| 6        | Validation critique heure départ    | Pas de départ si 0 assignation      |
+| 7        | Traitement individuel               | Chaque réservation traitée une par une|
+
+================================================================================
+COMMENT EXÉCUTER LES TESTS
+================================================================================
+
+1. Exécuter reinit.sql pour réinitialiser la base :
+   psql -U postgres -d postgres -f reinit.sql
+
+2. Exécuter le fichier de test :
+   psql -U postgres -d hotel_reservation -f test_sprint5_sprint6.sql
+
+3. Appeler l'API de génération de planning pour chaque date :
+   GET /api/planning/generate?date=2026-03-20
+   GET /api/planning/generate?date=2026-03-21
+   ...etc
+
+4. Comparer les attributions générées avec les résultats attendus ci-dessus
+
+================================================================================

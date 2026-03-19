@@ -4,6 +4,7 @@ import model.Attribution;
 import model.Distance;
 import model.FenetreRegroupement;
 import model.Reservation;
+import model.ReservationPartielle;
 import model.TypeCarburant;
 import model.Vehicule;
 import model.Lieu;
@@ -98,9 +99,31 @@ public class PlanningService {
         // 4. Construire les fenêtres de regroupement
         List<FenetreRegroupement> fenetres = construireFenetresRegroupement(reservationsTriees, tempsAttente);
 
+        // DEBUG: Write to temp file
+        StringBuilder debug = new StringBuilder();
+        debug.append("\n========== PLANNING DEBUG ==========\n");
+        debug.append("Date: ").append(date).append("\n");
+        debug.append("Total reservations: ").append(reservationsTriees.size()).append("\n");
+        debug.append("Number of windows: ").append(fenetres.size()).append("\n");
+        for (int i = 0; i < fenetres.size(); i++) {
+            FenetreRegroupement f = fenetres.get(i);
+            debug.append("  Window ").append(i).append(": ").append(f.getStartTime()).append(" -> ").append(f.getEndTime())
+                  .append(" | Reservations: ").append(f.getReservations().size()).append("\n");
+        }
+        debug.append("====================================\n");
+
+        try {
+            java.nio.file.Files.write(java.nio.file.Paths.get("/tmp/planning_debug.log"),
+                debug.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.APPEND);
+        } catch (Exception e) {}
+
         // 5. Traiter chaque fenêtre
         List<Attribution> toutesAttributions = new ArrayList<>();
         List<Reservation> aReporter = new ArrayList<>();
+        List<ReservationPartielle> toutesPartielles = new ArrayList<>();  // Sprint 7: NEW
+        Set<Long> globalAssignedReservationIds = new HashSet<>();  // BUGFIX: Track ALL assigned reservations globally
 
         for (int i = 0; i < fenetres.size(); i++) {
             FenetreRegroupement fenetre = fenetres.get(i);
@@ -112,23 +135,102 @@ public class PlanningService {
                 aReporter.clear();
             }
 
+            // BUGFIX Sprint 7: Remove all reservations already assigned in previous windows
+            // This prevents duplicate attributions across multiple time windows
+            List<Reservation> fenetreReservations = new java.util.ArrayList<>(fenetre.getReservations());
+            fenetre.getReservations().clear();
+            for (Reservation r : fenetreReservations) {
+                if (!globalAssignedReservationIds.contains(r.getId())) {
+                    fenetre.addReservation(r);
+                }
+            }
+
+            if (fenetre.getReservations().isEmpty()) {
+                continue;  // Skip empty windows
+            }
+
             // Traiter la fenêtre (utilise la logique existante)
             PlanningResult resultatFenetre = traiterFenetre(fenetre, toutesAttributions, vitesseMoyenne);
 
+            // BUGFIX: Add all newly assigned reservations to global tracking
+            for (Attribution a : resultatFenetre.getAttributions()) {
+                for (Reservation r : a.getReservations()) {
+                    globalAssignedReservationIds.add(r.getId());
+                }
+            }
+
             // Collecter les attributions
             toutesAttributions.addAll(resultatFenetre.getAttributions());
+
+            // Sprint 7: A.1 - Collecter les réservations partiellement reportées
+            List<ReservationPartielle> partiellesFenetre = resultatFenetre.getReservationsPartielles();
+            if (!partiellesFenetre.isEmpty()) {
+                toutesPartielles.addAll(partiellesFenetre);
+                // Ajouter les passagers restants à reporter pour fenêtre suivante
+                for (ReservationPartielle rp : partiellesFenetre) {
+                    aReporter.add(rp.creerReservationPourFenetresuivante());
+                }
+            }
 
             // Reporter les non assignées vers la prochaine fenêtre
             List<Reservation> nonAssigneesFenetre = resultatFenetre.getReservationsNonAssignees();
             if (!nonAssigneesFenetre.isEmpty() && i < fenetres.size() - 1) {
                 aReporter.addAll(nonAssigneesFenetre);
-            } else {
-                aReporter.addAll(nonAssigneesFenetre);
+            } else if (!nonAssigneesFenetre.isEmpty()) {
+                // Dernière fenêtre : ajouter aux partielles finales
+                for (Reservation r : nonAssigneesFenetre) {
+                    toutesPartielles.add(new ReservationPartielle(r, r.getPassengerNbr()));
+                }
             }
         }
 
-        // Les réservations qui restent dans aReporter sont les non assignées finales
-        return new PlanningResult(toutesAttributions, aReporter);
+        // DEBUG: Write early to file to see if this runs
+        try {
+            java.nio.file.Files.write(java.nio.file.Paths.get("/tmp/planning_early.txt"),
+                ("EARLY DEBUG: Reached before dedup with " + toutesAttributions.size() + " attributions\n")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (Exception e) {}
+
+        // Sprint 7: BUGFIX - Remove complete duplicate attributions across windows
+        // Key: vehicule_id ONLY - a vehicle appears only once per day
+        // (Different departure times from different windows = bug, keep first one)
+        List<Attribution> finalDedupedAttributions = new java.util.ArrayList<>();
+        Set<Long> seenVehicules = new java.util.HashSet<>();
+
+        int beforeDedup = toutesAttributions.size();
+        int duplicatesRemoved = 0;
+
+        for (Attribution attr : toutesAttributions) {
+            if (attr.getVehicule() != null) {
+                // Create unique key: just vehicule_id
+                Long vehiculeId = attr.getVehicule().getId();
+
+                // Only add if we haven't seen this vehicle before
+                if (!seenVehicules.contains(vehiculeId)) {
+                    finalDedupedAttributions.add(attr);
+                    seenVehicules.add(vehiculeId);
+                } else {
+                    duplicatesRemoved++;
+                }
+            } else {
+                // Safeguard: add attributions with missing vehicle (shouldn't happen)
+                finalDedupedAttributions.add(attr);
+            }
+        }
+
+        // DEBUG: Write dedup result to file
+        try {
+            String result = "Before: " + beforeDedup + ", After: " + finalDedupedAttributions.size() +
+                          ", Duplicates removed: " + duplicatesRemoved + "\n";
+            java.nio.file.Files.write(java.nio.file.Paths.get("/tmp/planning_dedup.txt"),
+                result.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                java.nio.file.StandardOpenOption.CREATE,
+                java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (Exception e) {}
+
+        return new PlanningResult(finalDedupedAttributions, aReporter, toutesPartielles);  // Sprint 7: Include all partielles
     }
 
     /**
@@ -216,6 +318,7 @@ public class PlanningService {
 
         List<Attribution> attributionsFenetre = new ArrayList<>();
         List<Reservation> nonAssigneesFenetre = new ArrayList<>();
+        List<ReservationPartielle> reservationsPartielles = new ArrayList<>();  // Sprint 7: NEW
         Set<Long> assignedIds = new HashSet<>();
 
         // Récupérer l'heure de départ de la fenêtre (tous les véhicules partent ensemble)
@@ -263,7 +366,37 @@ public class PlanningService {
 
                 attributionsFenetre.add(meilleureAttribution);
             } else {
-                nonAssigneesFenetre.add(reservation);
+                // Sprint 7 : Essayer la division si l'assignation complète échoue
+                List<Attribution> attributionsParDivision = trouverMeilleureAttributionAvecDivision(
+                        reservation, reservationsTriees, assignedIds,
+                        attributionsExistantes, heureDepart, vitesseMoyenne);
+
+                if (!attributionsParDivision.isEmpty()) {
+                    attributionsFenetre.addAll(attributionsParDivision);
+
+                    // Sprint 7: A.1 - Calculer les passagers assignés lors de la division
+                    int passagersAssignes = 0;
+                    for (Attribution a : attributionsParDivision) {
+                        Integer nbPass = a.getNbPassagersAssignes();
+                        if (nbPass != null) {
+                            passagersAssignes += nbPass;
+                        } else {
+                            passagersAssignes += a.getTotalPassengers();
+                        }
+                    }
+
+                    int passagersRestants = reservation.getPassengerNbr() - passagersAssignes;
+                    if (passagersRestants > 0) {
+                        // Créer une ReservationPartielle pour les passagers non assignés
+                        ReservationPartielle partielle = new ReservationPartielle(
+                            reservation, passagersRestants);
+                        reservationsPartielles.add(partielle);
+                    }
+
+                    assignedIds.add(reservation.getId());
+                } else {
+                    nonAssigneesFenetre.add(reservation);
+                }
             }
         }
 
@@ -286,7 +419,7 @@ public class PlanningService {
             }
         }
 
-        return new PlanningResult(attributionsFenetre, nonAssigneesFenetre);
+        return new PlanningResult(attributionsFenetre, nonAssigneesFenetre, reservationsPartielles);  // Sprint 7: Include partielles
     }
 
     /**
@@ -445,8 +578,127 @@ public class PlanningService {
     }
 
     /**
-     * Récupère l'heure de retour d'un véhicule depuis les attributions existantes.
+     * Trouve et applique la meilleure attribution AVEC DIVISION des passagers.
+     * Sprint 7 - Developer 1 (ETU003240)
+     *
+     * Appelée UNIQUEMENT si aucun véhicule n'a une capacité suffisante
+     * pour tous les passagers de la réservation.
+     *
+     * Active l'algorithme de division :
+     * 1. Trier les véhicules par capacité DESC
+     * 2. Assigner progressivement les passagers aux véhicules
+     * 3. Appliquer les critères de sélection à chaque étape
+     * 4. Regrouper d'autres réservations dans les places restantes
      */
+    private List<Attribution> trouverMeilleureAttributionAvecDivision(
+            Reservation reservationPrincipale,
+            List<Reservation> toutesReservations,
+            Set<Long> assignedIds,
+            List<Attribution> attributionsExistantes,
+            LocalDateTime dateHeureDepart,
+            double vitesseMoyenne) throws SQLException {
+
+        List<Attribution> attributionsDivision = new ArrayList<>();
+
+        // 1. Récupérer tous les véhicules
+        List<Vehicule> tousVehicules = vehiculeRepository.findAvailableVehicules(1);
+
+        // 2. Récupérer le nombre de trajets par véhicule
+        Map<Long, Integer> trajetsParVehicule = attributionRepository.countTrajetsParVehicule();
+
+        // 3. Filtrer les véhicules ayant au moins une place
+        List<Vehicule> vehiculesDisponibles = new ArrayList<>();
+        for (Vehicule vehicule : tousVehicules) {
+            if (vehicule.getNbPlace() > 0) {
+                if (!hasConflitHoraire(vehicule.getId(), dateHeureDepart, attributionsExistantes)) {
+                    vehiculesDisponibles.add(vehicule);
+                } else {
+                    LocalDateTime heureRetour = getHeureRetourVehicule(vehicule.getId(), attributionsExistantes);
+                    if (heureRetour != null && !heureRetour.isAfter(dateHeureDepart)) {
+                        vehiculesDisponibles.add(vehicule);
+                    }
+                }
+            }
+        }
+
+        if (vehiculesDisponibles.isEmpty()) {
+            return attributionsDivision;
+        }
+
+        // 4. Trier les véhicules par capacité décroissante (pour la division optimale)
+        vehiculesDisponibles.sort((v1, v2) -> v2.getNbPlace().compareTo(v1.getNbPlace()));
+
+        // 5. Appliquer la division
+        int passagersRestants = reservationPrincipale.getPassengerNbr();
+        List<Vehicule> vehiculesUsables = new ArrayList<>(vehiculesDisponibles);
+
+        while (passagersRestants > 0 && !vehiculesUsables.isEmpty()) {
+            // Sélectionner le meilleur véhicule pour cette partie
+            Vehicule vehiculeChoisi = selectionnerMeilleureVehiculeForDivision(
+                    passagersRestants, vehiculesUsables, trajetsParVehicule);
+
+            if (vehiculeChoisi == null) {
+                break;
+            }
+
+            int passagersAssignes = Math.min(passagersRestants, vehiculeChoisi.getNbPlace());
+
+            // Créer l'attribution pour cette portion
+            Attribution attribution = new Attribution();
+            attribution.setVehicule(vehiculeChoisi);
+            attribution.setReservation(reservationPrincipale);
+            attribution.addReservation(reservationPrincipale);
+            attribution.setNbPassagersAssignes(passagersAssignes);
+            attribution.setStatut("ASSIGNE");
+            attribution.setDateHeureDepart(dateHeureDepart);
+
+            // 6. Essayer le regroupement avec les places restantes
+            int placesRestantes = vehiculeChoisi.getNbPlace() - passagersAssignes;
+            if (placesRestantes > 0) {
+                for (Reservation other : toutesReservations) {
+                    if (assignedIds.contains(other.getId()) || other.getId().equals(reservationPrincipale.getId())) {
+                        continue;
+                    }
+                    // Sprint 7 : Vérifier que les lieux ne sont pas NULL avant de comparer
+                    if (other.getLieuDepart() != null && reservationPrincipale.getLieuDepart() != null &&
+                        other.getLieuDepart().equals(reservationPrincipale.getLieuDepart()) &&
+                        other.getPassengerNbr() <= placesRestantes) {
+                        attribution.addReservation(other);
+                        placesRestantes -= other.getPassengerNbr();
+                        assignedIds.add(other.getId());
+                    }
+                }
+            }
+
+            attributionsDivision.add(attribution);
+            // Sprint 7: A.4 - Ajouter à attributionsExistantes pour tracking disponibilité
+            attributionsExistantes.add(attribution);
+            passagersRestants -= passagersAssignes;
+            vehiculesUsables.remove(vehiculeChoisi);
+        }
+
+        // 7. Configurer les détails des trajets si des attributions ont été créées
+        for (Attribution attribution : attributionsDivision) {
+            try {
+                BigDecimal distanceAller = getDistanceAllerSimple(reservationPrincipale);
+                List<TrajetCar> trajets = new ArrayList<>();
+                if (!attribution.getReservations().isEmpty()) {
+                    trajets = getDureTotalTrajet(attribution.getReservations(), vitesseMoyenne);
+                }
+                double dureeTotale = getTotalDuree(trajets);
+                double distanceTotale = getTotalDistance(trajets);
+
+                attribution.setDetailTraject(trajets);
+                attribution.setDistanceKm(distanceAller);
+                attribution.setDistanceAllerRetourKm(BigDecimal.valueOf(distanceTotale));
+                attribution.setDateHeureRetour(dateHeureDepart.plusMinutes((long) (dureeTotale * 60)));
+            } catch (SQLException e) {
+                // En cas d'erreur, continuer avec les attributions créées
+            }
+        }
+
+        return attributionsDivision;
+    }
     private LocalDateTime getHeureRetourVehicule(Long vehiculeId, List<Attribution> attributions) {
         return attributions.stream()
                 .filter(a -> a.getVehicule().getId().equals(vehiculeId))
@@ -1034,16 +1286,245 @@ private Vehicule choisirVehiculeOptimise(List<Vehicule> disponibles, int passeng
         }
     }
 
+    // ============================================================================
+    // MÉTHODES DEVELOPER 1 (ETU003240) - SPRINT 7
+    // Gestion de la division des passagers entre plusieurs véhicules
+    // ============================================================================
+
     /**
-     * Classe interne pour retourner le résultat du planning.
+     * Divise les passagers d'une réservation entre plusieurs véhicules si nécessaire.
+     * Sprint 7 - Developer 1 (ETU003240)
+     *
+     * Cette méthode active la division UNIQUEMENT si aucun véhicule disponible
+     * n'a une capacité suffisante pour tous les passagers.
+     *
+     * @param reservationPrincipale La réservation à assigner
+     * @param vehiculesDisponibles Liste des véhicules disponibles (triés par capacité DESC)
+     * @param attributionsExistantes Attributions déjà faites
+     * @param dateHeureDepart Heure de départ prévue
+     * @return Liste des attributions créées (une par portion de passagers divisés)
+     */
+    protected List<Attribution> diviserPassagersEntreVehicules(
+            Reservation reservationPrincipale,
+            List<Vehicule> vehiculesDisponibles,
+            List<Attribution> attributionsExistantes,
+            LocalDateTime dateHeureDepart,
+            Map<Long, Integer> trajetsParVehicule) throws SQLException {
+
+        List<Attribution> attributionsDivision = new ArrayList<>();
+        int passagersRestants = reservationPrincipale.getPassengerNbr();
+        List<Vehicule> vehiculesUsables = new ArrayList<>(vehiculesDisponibles);
+
+        while (passagersRestants > 0 && !vehiculesUsables.isEmpty()) {
+            // Trouver le meilleur véhicule pour cette portion de passagers
+            Vehicule vehiculeChoisi = selectionnerMeilleureVehiculeForDivision(
+                    passagersRestants, vehiculesUsables, trajetsParVehicule);
+
+            if (vehiculeChoisi == null) {
+                // Aucun véhicule disponible - arrêter la division
+                break;
+            }
+
+            // Nombre de passagers à assigner à ce véhicule
+            int passagersAssignes = Math.min(passagersRestants, vehiculeChoisi.getNbPlace());
+
+            // Créer une attribution pour cette portion
+            Attribution attribution = new Attribution();
+            attribution.setVehicule(vehiculeChoisi);
+            attribution.setReservation(reservationPrincipale);
+            attribution.addReservation(reservationPrincipale);
+            attribution.setNbPassagersAssignes(passagersAssignes);
+            attribution.setStatut("ASSIGNE");
+            attribution.setDateHeureDepart(dateHeureDepart);
+
+            attributionsDivision.add(attribution);
+
+            // Mettre à jour les passagers restants
+            passagersRestants -= passagersAssignes;
+
+            // Marquer le véhicule comme utilisé
+            vehiculesUsables.remove(vehiculeChoisi);
+        }
+
+        return attributionsDivision;
+    }
+
+    /**
+     * Sélectionne le meilleur véhicule pour une portion de passagers lors de la division.
+     * Sprint 7 - Developer 1 (ETU003240)
+     *
+     * Critères de sélection (dans l'ordre) :
+     * 1. Écart minimum (nb_places - nb_passagers)
+     * 2. Moins de trajets effectués
+     * 3. Priorité Diesel ('D')
+     * 4. Choix aléatoire si égalité
+     */
+    private Vehicule selectionnerMeilleureVehiculeForDivision(
+            int passagersAAssigner,
+            List<Vehicule> vehiculesDisponibles,
+            Map<Long, Integer> trajetsParVehicule) {
+
+        if (vehiculesDisponibles == null || vehiculesDisponibles.isEmpty()) {
+            return null;
+        }
+
+        // Filtrer les véhicules ayant au moins une place
+        List<Vehicule> candidats = vehiculesDisponibles.stream()
+                .filter(v -> v.getNbPlace() > 0)
+                .collect(Collectors.toList());
+
+        if (candidats.isEmpty()) {
+            return null;
+        }
+
+        // Calculer l'écart pour chaque véhicule
+        Map<Vehicule, Integer> ecartMap = new HashMap<>();
+        for (Vehicule v : candidats) {
+            int ecart = v.getNbPlace() - passagersAAssigner;
+            ecartMap.put(v, Math.abs(ecart));
+        }
+
+        // Trouver l'écart minimum
+        int ecartMin = ecartMap.values().stream().mapToInt(Integer::intValue).min().orElse(Integer.MAX_VALUE);
+
+        // Garder les véhicules avec l'écart minimum
+        List<Vehicule> meilleursCandidats = candidats.stream()
+                .filter(v -> ecartMap.get(v) == ecartMin)
+                .collect(Collectors.toList());
+
+        if (meilleursCandidats.size() == 1) {
+            return meilleursCandidats.get(0);
+        }
+
+        // Parmis les candidats avec écart min, chercher celui avec moins de trajets
+        Map<Vehicule, Integer> trajetsMap = new HashMap<>();
+        for (Vehicule v : meilleursCandidats) {
+            trajetsMap.put(v, trajetsParVehicule.getOrDefault(v.getId(), 0));
+        }
+
+        int trajetsMin = trajetsMap.values().stream().mapToInt(Integer::intValue).min().orElse(0);
+
+        List<Vehicule> moinsTrajets = meilleursCandidats.stream()
+                .filter(v -> trajetsMap.get(v) == trajetsMin)
+                .collect(Collectors.toList());
+
+        if (moinsTrajets.size() == 1) {
+            return moinsTrajets.get(0);
+        }
+
+        // Priorité Diesel
+        List<Vehicule> diesels = moinsTrajets.stream()
+                .filter(v -> v.getTypeCarburant() == TypeCarburant.D)
+                .collect(Collectors.toList());
+
+        if (!diesels.isEmpty()) {
+            if (diesels.size() == 1) {
+                return diesels.get(0);
+            }
+            // Plusieurs diesels avec même score → aléatoire
+            Collections.shuffle(diesels);
+            return diesels.get(0);
+        }
+
+        // Aucun diesel → choix aléatoire parmi les autres
+        Collections.shuffle(moinsTrajets);
+        return moinsTrajets.get(0);
+    }
+
+    /**
+     * Regroupe les réservations après une division si des places restent disponibles.
+     * Sprint 7 - Developer 1 (ETU003240)
+     *
+     * Après avoir assigné une partie des passagers, cherche d'autres réservations
+     * à regrouper dans le véhicule.
+     *
+     * @param attribution L'attribution contenant la division
+     * @param toutesReservations Toutes les réservations de la fenêtre
+     * @param assignedIds IDs des réservations déjà assignées
+     * @return Liste des réservations ajoutées au regroupement
+     */
+    protected List<Reservation> regroupperApressDivision(
+            Attribution attribution,
+            List<Reservation> toutesReservations,
+            Set<Long> assignedIds) throws SQLException {
+
+        List<Reservation> ajoutees = new ArrayList<>();
+        int placesRestantes = attribution.getVehicule().getNbPlace() - attribution.getNbPassagersAssignes();
+
+        if (placesRestantes <= 0) {
+            return ajoutees;
+        }
+
+        // Chercher d'autres réservations compatible (non assignées, même lieu départ)
+        for (Reservation r : toutesReservations) {
+            if (assignedIds.contains(r.getId())) {
+                continue;
+            }
+
+            // Vérifier même lieu de départ
+            if (!r.getLieuDepart().equals(attribution.getReservation().getLieuDepart())) {
+                continue;
+            }
+
+            // Vérifier si elle rentre dans les places restantes
+            if (r.getPassengerNbr() <= placesRestantes) {
+                attribution.addReservation(r);
+                placesRestantes -= r.getPassengerNbr();
+                ajoutees.add(r);
+            }
+        }
+
+        return ajoutees;
+    }
+
+    /**
+     * Classe interne pour le résultat d'une tentative de division.
+     * Sprint 7 - A.2 : Retourne les attributions créées ET les passagers restants
+     */
+    public static class DivisionResult {
+        private final List<Attribution> attributions;
+        private final int passagersRestants;
+
+        public DivisionResult(List<Attribution> attributions, int passagersRestants) {
+            this.attributions = attributions != null ? attributions : new ArrayList<>();
+            this.passagersRestants = passagersRestants;
+        }
+
+        public List<Attribution> getAttributions() {
+            return attributions;
+        }
+
+        public int getPassagersRestants() {
+            return passagersRestants;
+        }
+
+        public boolean aDesPassagersRestants() {
+            return passagersRestants > 0;
+        }
+    }
+
+    /**
+     * Classe interne pour gérer une portion de réservation reportée.
+     * Sprint 7 : Inclut les réservations partiellement assignées
      */
     public static class PlanningResult {
         private final List<Attribution> attributions;
         private final List<Reservation> reservationsNonAssignees;
+        private final List<ReservationPartielle> reservationsPartielles;  // Sprint 7: NEW
 
+        // Constructeur legacy (backward compatibility)
         public PlanningResult(List<Attribution> attributions, List<Reservation> reservationsNonAssignees) {
-            this.attributions = attributions;
-            this.reservationsNonAssignees = reservationsNonAssignees;
+            this(attributions, reservationsNonAssignees, new ArrayList<>());
+        }
+
+        // Constructeur complet
+        public PlanningResult(
+                List<Attribution> attributions,
+                List<Reservation> reservationsNonAssignees,
+                List<ReservationPartielle> reservationsPartielles) {
+            this.attributions = attributions != null ? attributions : new ArrayList<>();
+            this.reservationsNonAssignees = reservationsNonAssignees != null ? reservationsNonAssignees : new ArrayList<>();
+            this.reservationsPartielles = reservationsPartielles != null ? reservationsPartielles : new ArrayList<>();
         }
 
         public List<Attribution> getAttributions() {
@@ -1052,6 +1533,41 @@ private Vehicule choisirVehiculeOptimise(List<Vehicule> disponibles, int passeng
 
         public List<Reservation> getReservationsNonAssignees() {
             return reservationsNonAssignees;
+        }
+
+        public List<ReservationPartielle> getReservationsPartielles() {
+            return reservationsPartielles;
+        }
+
+        /**
+         * Retourne le nombre total de passagers assignés.
+         */
+        public int getTotalPassagersAssignes() {
+            int total = 0;
+            for (Attribution a : attributions) {
+                Integer nbPass = a.getNbPassagersAssignes();
+                if (nbPass != null) {
+                    total += nbPass;
+                } else {
+                    total += a.getTotalPassengers();
+                }
+            }
+            return total;
+        }
+
+        /**
+         * Retourne le nombre total de passagers reportés.
+         */
+        public int getTotalPassagersReportes() {
+            int total = 0;
+            for (ReservationPartielle rp : reservationsPartielles) {
+                total += rp.getPassagersRestants();
+            }
+            // Ajouter aussi les réservations entièrement non-assignées
+            for (Reservation r : reservationsNonAssignees) {
+                total += r.getPassengerNbr();
+            }
+            return total;
         }
     }
 }
