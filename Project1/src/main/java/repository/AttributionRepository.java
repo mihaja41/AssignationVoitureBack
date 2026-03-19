@@ -14,6 +14,7 @@ import java.util.Map;
 
 /**
  * Repository pour la gestion des attributions en base de données.
+ * Sprint 7 - Developer 2 (ETU003283): Support de la division avec nb_passagers_assignes
  * Sprint 5/6 - Developer 2 (ETU003283)
  */
 public class AttributionRepository {
@@ -23,10 +24,11 @@ public class AttributionRepository {
 
     /**
      * Enregistrer une attribution en base de données.
+     * Sprint 7: Inclut nb_passagers_assignes pour supporter la division
      */
     public Attribution save(Attribution attribution) throws SQLException {
-        String sql = "INSERT INTO attribution (reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut) " +
-                     "VALUES (?, ?, ?, ?, ?) RETURNING id, created_at, updated_at";
+        String sql = "INSERT INTO attribution (reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut, nb_passagers_assignes) " +
+                     "VALUES (?, ?, ?, ?, ?, ?) RETURNING id, created_at, updated_at";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -36,6 +38,14 @@ public class AttributionRepository {
             stmt.setTimestamp(3, Timestamp.valueOf(attribution.getDateHeureDepart()));
             stmt.setTimestamp(4, Timestamp.valueOf(attribution.getDateHeureRetour()));
             stmt.setString(5, attribution.getStatut());
+
+            // Sprint 7: Inclure nb_passagers_assignes
+            if (attribution.getNbPassagersAssignes() != null) {
+                stmt.setInt(6, attribution.getNbPassagersAssignes());
+            } else {
+                // Par défaut: nombre total de passagers de la réservation
+                stmt.setInt(6, attribution.getReservation().getPassengerNbr());
+            }
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -49,10 +59,11 @@ public class AttributionRepository {
 
     /**
      * Enregistrer plusieurs attributions (pour un véhicule avec plusieurs réservations regroupées).
+     * Sprint 7: Inclut nb_passagers_assignes pour supporter la division
      */
     public void saveAll(Attribution attribution) throws SQLException {
-        String sql = "INSERT INTO attribution (reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut) " +
-                     "VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO attribution (reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut, nb_passagers_assignes) " +
+                     "VALUES (?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -64,6 +75,15 @@ public class AttributionRepository {
                 stmt.setTimestamp(3, Timestamp.valueOf(attribution.getDateHeureDepart()));
                 stmt.setTimestamp(4, Timestamp.valueOf(attribution.getDateHeureRetour()));
                 stmt.setString(5, attribution.getStatut());
+
+                // Sprint 7: Inclure nb_passagers_assignes
+                if (attribution.getNbPassagersAssignes() != null) {
+                    stmt.setInt(6, attribution.getNbPassagersAssignes());
+                } else {
+                    // Par défaut: nombre total de passagers de cette réservation
+                    stmt.setInt(6, reservation.getPassengerNbr());
+                }
+
                 stmt.addBatch();
             }
 
@@ -76,7 +96,7 @@ public class AttributionRepository {
      */
     public List<Attribution> findAll() throws SQLException {
         List<Attribution> attributions = new ArrayList<>();
-        String sql = "SELECT id, reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut, created_at " +
+        String sql = "SELECT id, reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut, nb_passagers_assignes, created_at " +
                      "FROM attribution ORDER BY date_heure_depart";
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -97,7 +117,7 @@ public class AttributionRepository {
      */
     public List<Attribution> findByDate(LocalDateTime date) throws SQLException {
         List<Attribution> attributions = new ArrayList<>();
-        String sql = "SELECT id, reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut, created_at " +
+        String sql = "SELECT id, reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut, nb_passagers_assignes, created_at " +
                      "FROM attribution WHERE DATE(date_heure_depart) = DATE(?) ORDER BY date_heure_depart";
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -121,7 +141,7 @@ public class AttributionRepository {
      */
     public List<Attribution> findByVehiculeId(Long vehiculeId) throws SQLException {
         List<Attribution> attributions = new ArrayList<>();
-        String sql = "SELECT id, reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut, created_at " +
+        String sql = "SELECT id, reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut, nb_passagers_assignes, created_at " +
                      "FROM attribution WHERE vehicule_id = ? ORDER BY date_heure_depart";
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -251,6 +271,11 @@ public class AttributionRepository {
         attribution.setDateHeureDepart(rs.getTimestamp("date_heure_depart").toLocalDateTime());
         attribution.setDateHeureRetour(rs.getTimestamp("date_heure_retour").toLocalDateTime());
         attribution.setStatut(rs.getString("statut"));
+
+        // Sprint 7: Mapper nb_passagers_assignes
+        if (rs.getObject("nb_passagers_assignes") != null) {
+            attribution.setNbPassagersAssignes(rs.getInt("nb_passagers_assignes"));
+        }
 
         // Charger le véhicule
         Long vehiculeId = rs.getLong("vehicule_id");

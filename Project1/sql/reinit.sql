@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS attribution (
     date_heure_depart TIMESTAMP NOT NULL,
     date_heure_retour TIMESTAMP NOT NULL,
     statut VARCHAR(20) NOT NULL DEFAULT 'ASSIGNE',
+    nb_passagers_assignes INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

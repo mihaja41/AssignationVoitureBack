@@ -8,6 +8,10 @@ import java.util.List;
 /**
  * Représente une attribution de véhicule à une ou plusieurs réservations regroupées (résultat du planning).
  *
+ * Sprint 7 : Support de la division des passagers d'une même réservation entre plusieurs véhicules.
+ *   Une réservation peut être DIVISÉE entre plusieurs véhicules.
+ *   Chaque attribution indique combien de passagers sont transportés dans CE véhicule.
+ *
  * Sprint 5/6 : Maintenant enregistré en base de données dans la table attribution.
  *
  * Sprint 4 – Regroupement :
@@ -31,7 +35,7 @@ public class Attribution {
     private BigDecimal distanceKm;            // distance aller simple (calculée depuis table distance)
     private BigDecimal distanceAllerRetourKm;  // distance aller-retour (= distanceKm × 2)
     private String statut;                     // "ASSIGNE"
-
+    private Integer nbPassagersAssignes;       // Sprint 7 : nombre de passagers transportés dans CE véhicule
 
     private List<TrajetCar> detailTraject = new ArrayList<>(); 
 
@@ -63,9 +67,14 @@ public class Attribution {
     
 
     /**
-     * Nombre total de passagers dans ce véhicule (somme de toutes les réservations regroupées).
+     * Nombre total de passagers dans ce véhicule.
+     * Sprint 7 : Si nbPassagersAssignes est défini, le retourner (division support).
+     * Sinon, retourner la somme de toutes les réservations regroupées.
      */
     public int getTotalPassengers() {
+        if (nbPassagersAssignes != null) {
+            return nbPassagersAssignes;
+        }
         return reservations.stream().mapToInt(Reservation::getPassengerNbr).sum();
     }
 
@@ -145,5 +154,13 @@ public class Attribution {
 
     public void setStatut(String statut) {
         this.statut = statut;
+    }
+
+    public Integer getNbPassagersAssignes() {
+        return nbPassagersAssignes;
+    }
+
+    public void setNbPassagersAssignes(Integer nbPassagersAssignes) {
+        this.nbPassagersAssignes = nbPassagersAssignes;
     }
 }
