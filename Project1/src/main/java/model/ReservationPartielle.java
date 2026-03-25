@@ -78,21 +78,28 @@ public class ReservationPartielle {
         return passagersRestants == passagersTotalOrigine;
     }
 
+    // Compteur pour générer des IDs temporaires uniques (négatifs pour les distinguer)
+    private static long tempIdCounter = -1;
+
     /**
      * Crée une nouvelle Réservation basée sur cette partielle.
      * Utile pour la fenêtre suivante : on accepte les passagers restants
      * comme une nouvelle réservation avec même Date, Lieu, etc.
      *
+     * Note: Un ID temporaire négatif est assigné pour éviter les NullPointerException
+     * lors des comparaisons d'ID dans le service de planning.
+     *
      * @return Nouvelle réservation avec passagersRestants passagers
      */
     public Reservation creerReservationPourFenetresuivante() {
         Reservation res = new Reservation();
+        // Assigner un ID temporaire négatif unique pour éviter les NPE
+        res.setId(tempIdCounter--);
         res.setCustomerId(reservationOrigine.getCustomerId());
         res.setPassengerNbr(passagersRestants);
         res.setArrivalDate(reservationOrigine.getArrivalDate());
         res.setLieuDepart(reservationOrigine.getLieuDepart());
         res.setLieuDestination(reservationOrigine.getLieuDestination());
-        // Note: L'ID peut être null jusqu'à insertion en BDD
         return res;
     }
 

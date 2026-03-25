@@ -1,0 +1,115 @@
+================================================================================
+TODO -  sprint 7
+Optimisation de l'algorithme d'assignation et disponibilite vehicule
+================================================================================
+Date de creation : 2026-03-19
+Auteur : ETU003240
+================================================================================
+
+Ce fichier decrit les NOUVELLES FONCTIONNALITES a implementer pour optimiser
+l'algorithme d'assignation des vehicules aux reservations.
+
+================================================================================
+                              RESUME DES MODIFICATIONS
+================================================================================
+
+MODIFICATION 1 : Regroupement optimal (ecart minimum)
+  - Chercher la reservation avec nb_passagers le PLUS PROCHE des places restantes
+  [ici , on doit prendre le nombre de passager le plus proches de nombres de place restant entre tous ceux qui sont 
+  >= ou <= (avec ou sans depassement)
+  Si ca se depasse alors on doit aussi diviser le nb de passager et trouver d'autres vehicules dispo le plus proche des 
+  nombres des passagers restant et ainsi de suite jusqu'a ce que nous ne trouvons plus de place pour les passager restant et les mettres dans des reservationPartielle comme dans le 
+  raisonnement existant deja ici present ]
+
+
+
+MODIFICATION 2 : Selection vehicule optimal pour division
+  - Lors de la division, choisir le vehicule avec nb_places le PLUS PROCHE
+    du nombre de passagers restants
+
+MODIFICATION 3 : Heure de disponibilite quotidienne des vehicules
+  - Nouvelle colonne : heure_disponible_debut (TIME)
+  - Le vehicule n'est disponible qu'a partir de cette heure chaque jour
+
+================================================================================
+                    1. ALGORITHME COMPLET MIS A JOUR
+================================================================================
+
+ENTREE :
+  - Liste de reservations triees par nb_passagers DECROISSANT
+  - Liste de vehicules disponibles
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ALGORITHME  sprint 7 : ASSIGNATION OPTIMISEE                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+[A noter que les vehicules disponible sont les vehicules qui sont disponible entre chaque fenetre : 
+Dispo =  nb place restant > 0 et si nb_trajet >=1 -> heure retour entre la fenetre horaire et fenetre >= vehicule.heure_disponible_debut ]
+POUR CHAQUE reservation (triee par passagers DESC) :
+│
+├─► passagers_restants = reservation.nb_passagers
+│
+├─► TANT QUE passagers_restants > 0 ET vehicules_disponibles non vide :
+│   │
+│   ├─► [MODIF 2] Trouver le meilleur vehicule :
+│   │       1. Filtrer vehicules avec nb_places >= 1
+│   │       2. Calculer |nb_places - passagers_restants| pour chaque vehicule
+│   │       3. Trier par ecart CROISSANT (plus proche = meilleur)
+│   │       4. En cas d'egalite : moins de trajets(nb de trajet realise) > diesel > random
+│   │
+│   ├─► SI vehicule.nb_places >= passagers_restants :
+│   │   │   ┌─────────────────────────────────────────────┐
+│   │   │   │ CAS 1 : ASSIGNATION COMPLETE                │
+│   │   │   └─────────────────────────────────────────────┘
+│   │   ├─► Assigner TOUS les passagers_restants au vehicule
+│   │   ├─► places_restantes = vehicule.nb_places - passagers_restants
+│   │   ├─► passagers_restants = 0
+│   │   │
+│   │   └─► SI places_restantes > 0 :
+│   │       │   ┌─────────────────────────────────────────┐
+│   │       │   │ REGROUPEMENT OPTIMAL                    │
+│   │       │   └─────────────────────────────────────────┘
+│   │       └─► [MODIF 1] Chercher les reservation restant et ceux qui ne sont pas encore assigne aussi  avec :
+│   │               - Meme lieu de depart et l' arrival_date entre la fenetre ou arrival_date <= (fenetre)
+                      [ici, trouver les nb_passager le plus proches du nb_place_restant, meme si c'est nb_passagers <= places_restantes ou nb_passagers >= places_restantes mais il nous fauerais juste 
+                      trouver les plus proches pour le cas ou  nb_passagers >= places_restantes alors on va diviser les passagers 
+                      passagers_restants = reservation.nb_passager - vehicule.nb_place_restant et traiter au prime abord a trouver les autres vehicules disponibles avec le nb de place restant le plus proche des 
+                      nb des passagers restant non assignee (ou nb passager restant >= nb_place_restant ou nb passager restant <= nb_place_restant mais juste a trouver les plus proches)]
+│   │               - nb_passagers le PLUS PROCHE de places_restantes
+│   │               → Priorise remplissage maximal
+│   │
+│   └─► SINON (vehicule.nb_places < passagers_restants) :
+│       │   ┌─────────────────────────────────────────────┐
+│       │   │ CAS 2 : ASSIGNATION PARTIELLE (DIVISION)    │
+│       │   └─────────────────────────────────────────────┘
+│       ├─► Assigner vehicule.nb_places passagers au vehicule
+│       ├─► passagers_restants = passagers_restants - vehicule.nb_places
+│       ├─► Marquer le vehicule comme UTILISE (retirer de la liste)
+│       └─► [MODIF 2] Pour les passagers_restants :
+│               Chercher vehicule avec nb_places le PLUS PROCHE (ou nb place de vehicule restant et disponible superieur ou inferieur aux nombres de passagers restants mais il nous faudrais trouver 
+                  celui le plus proche )
+│               de passagers_restants
+│
+└─► SI passagers_restants > 0 (qui n'ont pas trouve des vehicules a assigner ):
+    │   ┌─────────────────────────────────────────────────┐
+    │   │ CAS 3 : PASSAGERS NON ASSIGNABLES               │
+    │   └─────────────────────────────────────────────────┘
+    ├─► Creer ReservationPartielle(passagers_restants)
+    └─► Continuer avec la prochaine reservation (tri DESC)
+
+================================================================================
+                    2. MODIFICATION 1 : REGROUPEMENT OPTIMAL
+================================================================================
+
+-------------------------------------------------------------------------------
+2.1. DESCRIPTION
+-------------------------------------------------------------------------------
+
+AVANT (Sprint 7) :
+  - On prend la PREMIERE reservation compatible avec nb_passagers <= places
+  - Pas d'optimisation du remplissage
+
+APRES ( sprint 7) :
+  - On cherche la reservation dont nb_passagers est le PLUS PROCHE de places
+  - On priorise le remplissage MAXIMAL(avec ou sans depassement )
+  - Si nb_passagers > places_restantes : DIVISER
+

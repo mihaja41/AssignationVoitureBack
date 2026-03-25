@@ -6,7 +6,7 @@
 set -e  # Stoppe le script à la moindre erreur
 
 # === Variables communes ===
-TOMCAT_WEBAPPS="/home/etu003240/Documents/apache-tomcat-10.1.52/webapps"
+TOMCAT_WEBAPPS="/home/anita/apache-tomcat-10.1.28/webapps"
 # === Variables Project1 ===
 PROJECT_DIR="Project1"
 APP_NAME="project1"
@@ -98,7 +98,7 @@ cp "$PROJECT_BUILD/$APP_NAME.war" "$TOMCAT_WEBAPPS/"
 echo "✓ WAR copié dans Tomcat"
 
 # === Attendre que Tomcat extraie le WAR ===
-echo "⏳ Attente de l'extraction du WAR par Tomcat..."
+echo "Attente de l'extraction du WAR par Tomcat..."
 WAIT_COUNT=0
 while [ ! -d "$TOMCAT_WEBAPPS/$APP_NAME/WEB-INF" ] && [ $WAIT_COUNT -lt 30 ]; do
     sleep 1
