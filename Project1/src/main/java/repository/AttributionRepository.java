@@ -74,17 +74,25 @@ public class AttributionRepository {
             Reservation reservationPrincipale = attribution.getReservation();
 
             // Enregistrer une ligne pour chaque réservation du regroupement
+            // Filtrer les réservations avec IDs invalides (placeholders comme -1)
             for (Reservation reservation : attribution.getReservations()) {
+                //  sprint 7: Skip reservations with invalid IDs (null or <= 0)
+                if (reservation.getId() == null || reservation.getId() <= 0) {
+                    continue;
+                }
                 stmt.setLong(1, reservation.getId());
                 stmt.setLong(2, attribution.getVehicule().getId());
                 stmt.setTimestamp(3, Timestamp.valueOf(attribution.getDateHeureDepart()));
                 stmt.setTimestamp(4, Timestamp.valueOf(attribution.getDateHeureRetour()));
                 stmt.setString(5, attribution.getStatut());
 
-                // Sprint 7: A.3 - CORRECTION
-                // nbPassagersAssignes s'applique SEULEMENT à la réservation principale (divisée)
-                // Pour les autres (regroupées), utiliser toujours leur nombre de passagers
-                if (reservation.getId().equals(reservationPrincipale.getId()) &&
+                //  sprint 7: Utiliser passagersParReservation si disponible (plus précis)
+                // Sinon fallback sur nbPassagersAssignes ou reservation.getPassengerNbr()
+                Integer passagersPourCetteResa = attribution.getPassagersPourReservation(reservation.getId());
+                if (passagersPourCetteResa != null && passagersPourCetteResa > 0) {
+                    //  sprint 7: Utiliser le tracking précis par réservation
+                    stmt.setInt(6, passagersPourCetteResa);
+                } else if (reservation.getId().equals(reservationPrincipale.getId()) &&
                     attribution.getNbPassagersAssignes() != null) {
                     // Réservation principale avec division
                     stmt.setInt(6, attribution.getNbPassagersAssignes());

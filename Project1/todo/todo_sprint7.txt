@@ -92,7 +92,8 @@ POUR CHAQUE réservation (triée par passagers DESC) :
 │   │       │   │ REGROUPEMENT : Remplir les places vides │
 │   │       │   └─────────────────────────────────────────┘
 │   │       └─► Chercher d'autres réservations à regrouper
-│   │           (même lieu départ, nb_passagers <= places_restantes)
+│   │           #### (même lieu départ)
+                Ici ou dans notre logique actuelle fais nb_passagers <= places_restantes, il nous faudrais modifier , chercher d'autres reservation avec le nb_passager le plus pres du nombre de place restant
 │   │           → Peut aussi diviser ces réservations si nécessaire
 │   │
 │   └─► SINON (vehicule.nb_places < passagers_restants) :
@@ -102,7 +103,8 @@ POUR CHAQUE réservation (triée par passagers DESC) :
 │       ├─► Assigner vehicule.nb_places passagers au véhicule
 │       ├─► passagers_restants = passagers_restants - vehicule.nb_places
 │       ├─► Marquer le véhicule comme UTILISÉ (retirer de la liste)
-│       └─► Continuer la boucle pour les passagers_restants
+│       └─► Continuer la boucle pour les passagers_restants 
+          => Trouver les vehicules ou nombres de place le plus proches des nb de passager restant  
 │
 └─► SI passagers_restants > 0 :
     │   ┌─────────────────────────────────────────────────┐
@@ -110,6 +112,7 @@ POUR CHAQUE réservation (triée par passagers DESC) :
     │   └─────────────────────────────────────────────────┘
     └─► Reporter les passagers_restants à la fenêtre suivante
         (Créer une "réservation partielle" pour le report)
+-> Puis apres continuer a traiter le max(nb_passager) des reservations restant non assignee(Les trier par ordre decroissante et les trier)
 
 ---
 

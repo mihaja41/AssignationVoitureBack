@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * Représente une attribution de véhicule à une ou plusieurs réservations regroupées (résultat du planning).
@@ -37,7 +39,10 @@ public class Attribution {
     private String statut;                     // "ASSIGNE"
     private Integer nbPassagersAssignes;       // Sprint 7 : nombre de passagers transportés dans CE véhicule
 
-    private List<TrajetCar> detailTraject = new ArrayList<>(); 
+    //  sprint 7 : Tracking des passagers assignés PAR réservation dans CETTE attribution
+    private Map<Long, Integer> passagersParReservation = new HashMap<>();
+
+    private List<TrajetCar> detailTraject = new ArrayList<>();
 
     public Attribution() {}
 
@@ -47,7 +52,40 @@ public class Attribution {
      * Ajouter une réservation au regroupement de ce véhicule.
      */
     public void addReservation(Reservation r) {
-        this.reservations.add(r);
+        if (!this.reservations.contains(r)) {
+            this.reservations.add(r);
+        }
+    }
+
+    /**
+     *  sprint 7 : Obtenir le nombre de passagers d'une réservation dans cette attribution.
+     * Retourne le nombre stocké, ou le total de la réservation si non défini.
+     */
+    public int getPassagersPourReservation(Long reservationId) {
+        if (passagersParReservation.containsKey(reservationId)) {
+            return passagersParReservation.get(reservationId);
+        }
+        // Fallback: chercher dans la liste des réservations
+        for (Reservation r : reservations) {
+            if (r.getId() != null && r.getId().equals(reservationId)) {
+                return r.getPassengerNbr();
+            }
+        }
+        return 0;
+    }
+
+    /**
+     *  sprint 7 : Définir le nombre de passagers d'une réservation dans cette attribution.
+     */
+    public void setPassagersPourReservation(Long reservationId, int nbPassagers) {
+        passagersParReservation.put(reservationId, nbPassagers);
+    }
+
+    /**
+     *  sprint 7 : Obtenir le map complet des passagers par réservation.
+     */
+    public Map<Long, Integer> getPassagersParReservation() {
+        return passagersParReservation;
     }
 
     /**

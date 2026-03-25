@@ -424,6 +424,18 @@
             <% if (selectedDate != null) { %>
                 <div class="header-date">Date sélectionnée : <strong><%= selectedDate %></strong></div>
             <% } %>
+            <!-- Équipe de développement -->
+            <div style="margin-top: 8px; font-size: 11px; color: var(--ink-faint); letter-spacing: 0.05em;">
+                <span style="background: var(--accent-dim); color: var(--accent); padding: 3px 8px; border-radius: 4px; font-weight: 600;">
+                    ETU003255
+                </span>
+                <span style="background: var(--accent-dim); color: var(--accent); padding: 3px 8px; border-radius: 4px; font-weight: 600; margin-left: 4px;">
+                    ETU003283
+                </span>
+                <span style="background: var(--accent-dim); color: var(--accent); padding: 3px 8px; border-radius: 4px; font-weight: 600; margin-left: 4px;">
+                    ETU003240
+                </span>
+            </div>
         </div>
         <div class="header-actions">
             <a href="<%= request.getContextPath() %>/planning/form" class="btn btn-outline">
@@ -541,20 +553,23 @@
                                     }
                                 }
                             %>
-                            <% for (Reservation r : grouped) { %>
+                            <% for (Reservation r : grouped) {
+                                //  sprint 7: Obtenir le nombre de passagers pour CETTE réservation dans CETTE attribution
+                                int passagersIci = attr.getPassagersPourReservation(r.getId());
+                                boolean estDivise = reservationCount.getOrDefault(r.getId(), 0L) > 1;
+                            %>
                                 <div class="resa-line">
                                     <span style="font-weight:600;">#<%= r.getId() %></span>
                                     &ensp;<span style="color:var(--ink-light)"><%= r.getCustomerId() %></span>
 
-                                    <!-- Sprint 7 : Afficher ratio si division -->
-                                    <% if (reservationCount.getOrDefault(r.getId(), 0L) > 1 &&
-                                            totalPass < r.getPassengerNbr()) { %>
+                                    <!--  sprint 7 : Afficher ratio si division -->
+                                    <% if (estDivise && passagersIci < r.getPassengerNbr()) { %>
                                         &ensp;<span style="color:var(--gold); font-weight:600; font-size:11px;">
-                                            [<%= totalPass %>/<%= r.getPassengerNbr() %> pass.]
+                                            [<%= passagersIci %>/<%= r.getPassengerNbr() %> pass.]
                                         </span>
                                     <% } else { %>
                                         &ensp;<span style="color:var(--ink-faint);font-size:12px;">
-                                            <%= r.getPassengerNbr() %> pass.
+                                            <%= passagersIci %> pass.
                                         </span>
                                     <% } %>
                                 </div>
