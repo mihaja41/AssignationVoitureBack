@@ -554,7 +554,7 @@
                                 }
                             %>
                             <% for (Reservation r : grouped) {
-                                // Sprint 8: Obtenir le nombre de passagers pour CETTE réservation dans CETTE attribution
+                                //  sprint 7: Obtenir le nombre de passagers pour CETTE réservation dans CETTE attribution
                                 int passagersIci = attr.getPassagersPourReservation(r.getId());
                                 boolean estDivise = reservationCount.getOrDefault(r.getId(), 0L) > 1;
                             %>
@@ -562,7 +562,7 @@
                                     <span style="font-weight:600;">#<%= r.getId() %></span>
                                     &ensp;<span style="color:var(--ink-light)"><%= r.getCustomerId() %></span>
 
-                                    <!-- Sprint 8 : Afficher ratio si division -->
+                                    <!--  sprint 7 : Afficher ratio si division -->
                                     <% if (estDivise && passagersIci < r.getPassengerNbr()) { %>
                                         &ensp;<span style="color:var(--gold); font-weight:600; font-size:11px;">
                                             [<%= passagersIci %>/<%= r.getPassengerNbr() %> pass.]
