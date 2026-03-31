@@ -210,6 +210,39 @@ public class VehiculeRepository {
     }
 
     /**
+     * SPRINT 8 : Trouver les véhicules disponibles dès le début d'une date.
+     * Ce sont les véhicules qui n'ont aucune attribution se terminant après cette date.
+     *
+     * @param date La date/heure à partir de laquelle chercher les véhicules disponibles
+     * @return Liste des véhicules disponibles dès le début
+     */
+    public List<Vehicule> findVehiculesDisponiblesAuDebut(java.time.LocalDateTime date) throws SQLException {
+        List<Vehicule> vehicules = new ArrayList<>();
+        String sql = "SELECT v.id, v.reference, v.nb_place, v.type_carburant, v.heure_disponible_debut " +
+                     "FROM vehicule v " +
+                     "WHERE v.nb_place > 0 " +
+                     "AND v.id NOT IN (" +
+                     "    SELECT DISTINCT a.vehicule_id FROM attribution a " +
+                     "    WHERE a.date_heure_retour > ?" +
+                     ") " +
+                     "ORDER BY v.nb_place DESC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setTimestamp(1, Timestamp.valueOf(date));
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    vehicules.add(mapVehicule(rs));
+                }
+            }
+        }
+
+        return vehicules;
+    }
+
+    /**
      *  sprint 7 : Mapper un ResultSet vers un Vehicule.
      * Centralise le mapping pour éviter la duplication.
      */

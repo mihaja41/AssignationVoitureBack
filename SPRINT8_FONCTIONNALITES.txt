@@ -1,0 +1,124 @@
+v2      10 places       date_heure_retour: 09:45 (Es)
+v3      12 places       date_heure_retour: 10:12 (D)
+r1      9 passagers     arrival_date: 08:00 
+r2      5 passagers     arrival_date: 07:30 
+r3      1 passager      arrival_date: 10:00 
+r4      7 passagers     arrival_date: 10:10 
+r5      5 passagers     arrival_date: 10:11
+
+SPRINT 8 – Spécification complète des nouvelles fonctionnalités et changements attendus
+
+Ce document détaille de façon exhaustive les nouvelles règles métier, les cas particuliers, les exemples et la logique attendue pour la gestion des réservations et des véhicules dans le cadre du SPRINT 8. Il sert de référence pour toute l’équipe.
+
+------------------------------------------------------------
+1. Priorisation des réservations non encore assignées lors de la planification
+------------------------------------------------------------
+
+• À chaque nouvelle fenêtre de planification (fenêtre = intervalle de temps où des réservations arrivent ou peuvent être traitées), il faut :
+  - Regrouper toutes les réservations non encore assignées (y compris les restes de divisions précédentes, reports, etc.) qui sont arrivées avant le début de cette fenêtre.
+  - Ces réservations sont dites « prioritaires » et doivent être traitées avant toute nouvelle réservation arrivant dans la fenêtre.
+  - Trier ces réservations prioritaires par nombre de passagers décroissant (du plus grand au plus petit).
+  - Pour chaque réservation prioritaire :
+    • Chercher le véhicule disponible dont le nombre de places restantes est le plus proche du nombre de passagers de la réservation.
+    • Si le nombre de passagers de la réservation > nombre de places restantes du véhicule, diviser la réservation (selon les règles existantes) :
+      - Remplir le véhicule au maximum.
+      - Le reste des passagers devient une nouvelle réservation non assignée à traiter dans la même fenêtre ou la suivante.
+    • Répéter jusqu’à ce que toutes les réservations prioritaires soient traitées.
+
+------------------------------------------------------------
+2. Gestion des retours de véhicules à l’aéroport et ouverture de fenêtres d’attente
+------------------------------------------------------------
+
+• Lorsqu’un ou plusieurs véhicules reviennent à l’aéroport à une date/heure donnée :
+  - Traiter d’abord les véhicules qui reviennent en premier à cette date/heure (ordre chronologique).
+  - Pour chaque véhicule retourné :
+    • Identifier toutes les réservations non encore assignées (restes, reports, divisions) arrivées avant ou pendant cette date/heure de retour.
+    • Trier ces réservations par nombre de passagers décroissant.
+    • Pour chaque réservation non assignée :
+      - Trouver le véhicule retourné dont la capacité restante est la plus proche du nombre de passagers.
+      - En cas d’égalité (même écart), appliquer la hiérarchie suivante :
+        1. Écart le plus faible
+        2. Nombre de trajets déjà effectués (priorité au véhicule ayant fait le moins de trajets)
+        3. Type Diesel prioritaire
+        4. Aléatoire si tout est égal
+      - Si la réservation remplit le véhicule, le véhicule part immédiatement.
+      - Si la réservation ne remplit pas le véhicule :
+        • Assigner la réservation, puis ouvrir une fenêtre d’attente pour ce véhicule (durée = valeur prise depuis la base de données, ex : 30 min).
+        • Pendant cette fenêtre, surveiller l’arrivée de nouvelles réservations non assignées et tenter de remplir le véhicule.
+        • Continuer à remplir le véhicule avec les réservations les plus proches en nombre de passagers, jusqu’à ce qu’il soit plein ou qu’il n’y ait plus de réservations compatibles.
+        • Si le véhicule n’est pas plein à la fin de la fenêtre, il part avec les passagers assignés à l’heure d’arrivée de la dernière réservation qui lui a été attribuée.
+  - Après avoir traité le véhicule qui a ouvert la fenêtre d’attente, traiter les autres véhicules qui ont pu retourner pendant cette même fenêtre, en appliquant la même logique.
+
+------------------------------------------------------------
+3. Création dynamique et gestion des fenêtres d’attente
+------------------------------------------------------------
+
+• Une fenêtre d’attente est créée à chaque fois qu’un véhicule n’est pas plein après attribution initiale.
+• La durée de la fenêtre d’attente est récupérée depuis la base de données (modifiable par l’administrateur).
+• Pendant cette fenêtre, toutes les nouvelles réservations non assignées qui arrivent sont considérées pour remplir le véhicule.
+• Si plusieurs véhicules sont en attente dans la même fenêtre, appliquer les mêmes règles de sélection pour chaque véhicule (priorité à celui qui a ouvert la fenêtre).
+• À la fin de la fenêtre, tous les véhicules qui ne sont pas pleins partent avec les passagers assignés, à l’heure d’arrivée de la dernière réservation qui leur a été attribuée.
+
+------------------------------------------------------------
+4. Gestion des restes, reports et divisions de réservations
+------------------------------------------------------------
+
+• Lorsqu’une réservation ne peut pas être entièrement assignée à un véhicule (par manque de place), le reste des passagers devient une nouvelle réservation non assignée.
+• Ces restes sont traités en priorité lors de la prochaine fenêtre de planification.
+• À chaque nouvelle fenêtre, commencer par traiter tous les restes et reports avant les nouvelles arrivées.
+
+------------------------------------------------------------
+5. Cas particulier : Fenêtre issue d’une arrivée de réservation non assignée
+------------------------------------------------------------
+
+• Lorsqu’une nouvelle réservation non assignée arrive après la fin d’une fenêtre précédente, une nouvelle fenêtre d’attente est créée à partir de la date d’arrivée de cette réservation.
+• On commence par traiter tous les restes de réservations non assignées ou reportées arrivées avant cette nouvelle fenêtre.
+• Puis on traite la nouvelle réservation arrivée comme dans les fonctionnalites deja existantes . 
+
+------------------------------------------------------------
+6. Exemple détaillé et pédagogique
+------------------------------------------------------------
+
+Supposons que la date de tous cela soit le 27/03/2026 :
+
+Voitures :
+  v1      10 places       date_heure_retour: 09:45 (D)
+  v2      10 places       date_heure_retour: 09:45 (Es)
+  v3      12 places       date_heure_retour: 10:12 (D)
+
+Reste de Réservations non encore assignées :
+  r1      9 passagers     arrival_date: 08:00
+  r2      5 passagers     arrival_date: 07:30
+
+Nouvelles Réservations :
+  r3      1 passager      arrival_date: 10:00
+  r4      7 passagers     arrival_date: 10:10
+  r5      5 passagers     arrival_date: 10:11
+
+Étapes d’assignation :
+1. v1 est assignée à r1 (reste 1 place dans v1)
+2. r2 est assignée dans le reste de place de v1 (1 passager de r2), v1 part à 09:45
+3. Il reste 4 passagers non assignés de r2 (nouvelle réservation non assignée)
+4. v2 est assignée à r2 (4 passagers restants), il reste 6 places dans v2
+5. Plus aucune réservation non assignée n’arrive avant 09:45, donc on crée une fenêtre d’attente pour v2 entre [09:45 - 10:15] (temps d’attente pris depuis la base)
+6. r3 et r4 arrivent dans cette fenêtre d’attente
+7. r4 est assignée à v2 (car elle a le nombre de passagers le plus proche du nombre de places restantes de v2)
+8. Il reste 0 place dans v2, v2 part à 10:10 (arrival_date de r4)
+9. Il reste 1 passager non assigné de r4 (nouvelle réservation non assignée)
+10. Nouvelle fenêtre d’arrivée des réservations non assignées créée à partir de 10:11
+11. Créer une fenêtre d’attente entre [10:11 - 10:41] (issue d’une arrivée de réservation non assignée)
+12. On commence par traiter les restes de r4 (1 passager non assigné) puis r5 (5 passagers)
+13. Le reste de r4 est assigné à v3 (reste 11 places dans v3)
+14. r5 est assignée à v3 (reste 6 places dans v3)
+15. Comme il n’y a plus de réservation qui va arriver entre la fenêtre [10:11 - 10:41], tous les véhicules entre cette fenêtre qui sont assignés à des réservations partent tous vers 10:11
+
+------------------------------------------------------------
+7. Précisions et rappels importants
+------------------------------------------------------------
+
+• Le temps d’attente pour la fenêtre est pris depuis la base de données (modifiable par l’administrateur).
+• Lorsqu’un véhicule arrive, s’il n’est pas rempli après attribution, il ouvre une fenêtre d’attente et on commence par traiter ce véhicule, puis les autres véhicules qui ont pu retourner durant cette fenêtre créée.
+• Les autres raisonnements, règles métier et logiques déjà existants dans le projet NE CHANGENT PAS, sauf ceux explicitement mentionnés dans ce document.
+• Ce document doit être utilisé comme référence pour toute évolution, test ou validation de la fonctionnalité de planification et d’attribution des véhicules et réservations.
+
+------------------------------------------------------------
