@@ -22,6 +22,24 @@ public class AttributionRepository {
     private final VehiculeRepository vehiculeRepository = new VehiculeRepository();
     private final ReservationRepository reservationRepository = new ReservationRepository();
 
+    public static class VehiculeRetourEvent {
+        private final Long vehiculeId;
+        private final LocalDateTime heureRetour;
+
+        public VehiculeRetourEvent(Long vehiculeId, LocalDateTime heureRetour) {
+            this.vehiculeId = vehiculeId;
+            this.heureRetour = heureRetour;
+        }
+
+        public Long getVehiculeId() {
+            return vehiculeId;
+        }
+
+        public LocalDateTime getHeureRetour() {
+            return heureRetour;
+        }
+    }
+
     /**
      * Enregistrer une attribution en base de données.
      * Sprint 7: Inclut nb_passagers_assignes pour supporter la division
@@ -254,6 +272,38 @@ public class AttributionRepository {
         }
 
         return vehiculesRevenant;
+    }
+
+    /**
+     * SPRINT 8: Récupérer TOUS les événements de retour des véhicules dans une fenêtre de temps.
+     * Contrairement à getVehiculesRevenant(), cette méthode ne fait pas de MAX par véhicule.
+     */
+    public List<VehiculeRetourEvent> getEvenementsRetourVehicules(LocalDateTime startTime, LocalDateTime endTime) throws SQLException {
+        List<VehiculeRetourEvent> events = new ArrayList<>();
+        String sql = "SELECT vehicule_id, date_heure_retour " +
+                     "FROM attribution " +
+                     "WHERE date_heure_retour >= ? AND date_heure_retour <= ? " +
+                     "ORDER BY date_heure_retour ASC, vehicule_id ASC";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setTimestamp(1, Timestamp.valueOf(startTime));
+            stmt.setTimestamp(2, Timestamp.valueOf(endTime));
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    Timestamp ts = rs.getTimestamp("date_heure_retour");
+                    if (ts == null) continue;
+                    events.add(new VehiculeRetourEvent(
+                            rs.getLong("vehicule_id"),
+                            ts.toLocalDateTime()
+                    ));
+                }
+            }
+        }
+
+        return events;
     }
 
     /**

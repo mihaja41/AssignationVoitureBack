@@ -89,50 +89,67 @@ public class PlanningService {
         Map<Long, Integer> trajetsSessionParVehicule = new HashMap<>();
         Map<Long, Integer> passagersDejaAssignes = new HashMap<>();
 
-        // SPRINT 8: Construire les fenêtres basées sur les retours de véhicules
-        List<FenetreSprint8> fenetresSprint8 = construireFenetresBaseesSurRetourVehicules(
-                date, reservationsTriees, tempsAttente, toutesAttributions);
-
-        // Debug log
-        StringBuilder debug = new StringBuilder();
-        debug.append("\n========== PLANNING SPRINT 8 DEBUG ==========\n");
-        debug.append("Date: ").append(date).append("\n");
-        debug.append("Total reservations: ").append(reservationsTriees.size()).append("\n");
-        debug.append("Number of Sprint 8 windows: ").append(fenetresSprint8.size()).append("\n");
-        for (int i = 0; i < fenetresSprint8.size(); i++) {
-            FenetreSprint8 f = fenetresSprint8.get(i);
-            debug.append("  Window ").append(i).append(": ")
-                 .append(f.getStartTime()).append(" -> ").append(f.getEndTime())
-                 .append(" | Vehicles: ").append(f.getVehiculesDisponibles().size()).append("\n");
-        }
-        debug.append("==============================================\n");
-        try {
-            java.nio.file.Files.write(java.nio.file.Paths.get("/tmp/planning_debug.log"),
-                debug.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                java.nio.file.StandardOpenOption.CREATE,
-                java.nio.file.StandardOpenOption.APPEND);
-        } catch (Exception e) {}
-
-        if (fenetresSprint8.isEmpty()) {
-            // Aucun véhicule disponible -> toutes les réservations non assignées
-            return new PlanningResult(new ArrayList<>(), reservationsTriees);
-        }
-
         // SPRINT 8: Gérer les réservations non assignées entre les fenêtres
         List<Reservation> reservationsNonAssignees = new ArrayList<>(reservationsTriees);
+        Set<String> fenetresTraitees = new HashSet<>();
+        int gardeFouIterations = 0;
 
-        for (int i = 0; i < fenetresSprint8.size(); i++) {
-            FenetreSprint8 fenetreSprint8 = fenetresSprint8.get(i);
-
-            // Filtrer les réservations déjà entièrement assignées
+        while (gardeFouIterations++ < 1000) {
             reservationsNonAssignees.removeIf(r -> globalAssignedReservationIds.contains(r.getId()));
+            if (reservationsNonAssignees.isEmpty()) break;
 
-            if (reservationsNonAssignees.isEmpty()) {
+            // Fenêtres basées sur retours (recalculées dynamiquement à chaque tour)
+            List<FenetreSprint8> fenetresSprint8 = construireFenetresBaseesSurRetourVehicules(
+                    date, reservationsTriees, tempsAttente, toutesAttributions);
+
+            fenetresSprint8.sort(Comparator.comparing(FenetreSprint8::getStartTime));
+            FenetreSprint8 prochaineFenetreRetour = fenetresSprint8.stream()
+                    .filter(f -> !fenetresTraitees.contains(buildFenetreKey(f)))
+                    .findFirst()
+                    .orElse(null);
+
+            Reservation prochaineNonAssignee = reservationsNonAssignees.stream()
+                    .filter(r -> r.getArrivalDate() != null)
+                    .min(Comparator.comparing(Reservation::getArrivalDate))
+                    .orElse(null);
+
+            FenetreSprint8 fenetreATraiter = null;
+            String fenetreKey = null;
+
+            // Point 5 Sprint 8: fenêtre issue d'une arrivée de réservation non assignée
+            if (prochaineNonAssignee != null) {
+                LocalDateTime debutResa = prochaineNonAssignee.getArrivalDate();
+                boolean avantProchainRetour = (prochaineFenetreRetour == null)
+                        || debutResa.isBefore(prochaineFenetreRetour.getStartTime());
+
+                if (avantProchainRetour) {
+                    List<Vehicule> vehiculesDispo = getVehiculesDisponiblesAInstant(debutResa, toutesAttributions);
+                    if (!vehiculesDispo.isEmpty()) {
+                        FenetreSprint8 fenetreArrivee = new FenetreSprint8(
+                                debutResa,
+                                debutResa.plusMinutes((long) tempsAttente));
+                        for (Vehicule v : vehiculesDispo) {
+                            fenetreArrivee.addVehicule(v);
+                        }
+                        fenetreATraiter = fenetreArrivee;
+                        fenetreKey = buildFenetreKey(fenetreArrivee) + "_arrival";
+                    }
+                }
+            }
+
+            if (fenetreATraiter == null && prochaineFenetreRetour != null) {
+                fenetreATraiter = prochaineFenetreRetour;
+                fenetreKey = buildFenetreKey(prochaineFenetreRetour);
+            }
+
+            if (fenetreATraiter == null) {
                 break;
             }
 
+            fenetresTraitees.add(fenetreKey);
+
             PlanningResult resultatFenetre = traiterFenetreSprint8(
-                    fenetreSprint8,
+                    fenetreATraiter,
                     reservationsTriees,
                     reservationsNonAssignees,
                     toutesAttributions,
@@ -142,18 +159,13 @@ public class PlanningService {
                     passagersDejaAssignes,
                     globalAssignedReservationIds);
 
-            // Tracker les réservations entièrement assignées
             globalAssignedReservationIds.addAll(resultatFenetre.getReservationIdsCompletementAssignees());
-
-            toutesAttributions.addAll(resultatFenetre.getAttributions());
             toutesPartielles.addAll(resultatFenetre.getReservationsPartielles());
 
-            // Ajouter les partielles aux réservations non assignées pour la prochaine fenêtre
+            // Ajouter les partielles aux non assignées pour les tours suivants
             for (ReservationPartielle rp : resultatFenetre.getReservationsPartielles()) {
-                if (i < fenetresSprint8.size() - 1) {
-                    Reservation resteReservation = rp.creerReservationPourFenetresuivante();
-                    reservationsNonAssignees.add(resteReservation);
-                }
+                Reservation resteReservation = rp.creerReservationPourFenetresuivante();
+                reservationsNonAssignees.add(resteReservation);
             }
         }
 
@@ -297,8 +309,9 @@ public class PlanningService {
         // 1. Récupérer les véhicules disponibles dès le début (aucune attribution après premiereArrivee)
         List<Vehicule> vehiculesDisponiblesDebut = vehiculeRepository.findVehiculesDisponiblesAuDebut(premiereArrivee);
 
-        // 2. Récupérer les véhicules qui reviennent pendant la journée
-        Map<Long, LocalDateTime> vehiculesRevenant = attributionRepository.getVehiculesRevenant(premiereArrivee, finJournee);
+        // 2. Récupérer TOUS les événements de retour pendant la journée
+        List<AttributionRepository.VehiculeRetourEvent> vehiculesRevenant =
+                attributionRepository.getEvenementsRetourVehicules(premiereArrivee, finJournee);
 
         // 3. Créer les événements de disponibilité
         List<VehicleAvailabilityEvent> events = new ArrayList<>();
@@ -308,16 +321,15 @@ public class PlanningService {
             events.add(new VehicleAvailabilityEvent(v, premiereArrivee));
         }
 
-        // Ajouter les véhicules qui reviennent
-        for (Map.Entry<Long, LocalDateTime> entry : vehiculesRevenant.entrySet()) {
-            // Ne pas dupliquer si déjà dans vehiculesDisponiblesDebut
-            boolean dejaPresent = vehiculesDisponiblesDebut.stream()
-                    .anyMatch(v -> v.getId().equals(entry.getKey()));
+        // Ajouter tous les retours (pas uniquement le dernier retour par véhicule)
+        for (AttributionRepository.VehiculeRetourEvent entry : vehiculesRevenant) {
+            Vehicule v = vehiculeRepository.findById(entry.getVehiculeId());
+            if (v == null) continue;
+            boolean dejaPresent = events.stream()
+                    .anyMatch(e -> e.getVehicule().getId().equals(v.getId())
+                            && e.getAvailableAt().equals(entry.getHeureRetour()));
             if (!dejaPresent) {
-                Vehicule v = vehiculeRepository.findById(entry.getKey());
-                if (v != null) {
-                    events.add(new VehicleAvailabilityEvent(v, entry.getValue()));
-                }
+                events.add(new VehicleAvailabilityEvent(v, entry.getHeureRetour()));
             }
         }
 
@@ -388,6 +400,40 @@ public class PlanningService {
         resultat.addAll(prioritaires);
         resultat.addAll(nouvelles);
         return resultat;
+    }
+
+    private String buildFenetreKey(FenetreSprint8 fenetre) {
+        String vehicules = fenetre.getVehiculesDisponibles().stream()
+                .map(v -> String.valueOf(v.getId()))
+                .sorted()
+                .collect(Collectors.joining(","));
+        return fenetre.getStartTime() + "|" + fenetre.getEndTime() + "|" + vehicules;
+    }
+
+    /**
+     * SPRINT 8 - Point 5: véhicules réellement disponibles à un instant donné,
+     * en tenant compte de la BD et des attributions en mémoire (session courante).
+     */
+    private List<Vehicule> getVehiculesDisponiblesAInstant(
+            LocalDateTime instant,
+            List<Attribution> attributionsExistantes) throws SQLException {
+
+        List<Vehicule> tousVehicules = vehiculeRepository.findAllVehicules();
+        List<Vehicule> disponibles = new ArrayList<>();
+
+        for (Vehicule vehicule : tousVehicules) {
+            if (vehicule.getNbPlace() < 1) continue;
+            if (!vehicule.estDisponibleAHeure(instant.toLocalTime())) continue;
+
+            boolean disponibleBD = attributionRepository.isVehiculeDisponible(vehicule.getId(), instant);
+            boolean conflitSession = hasConflitHoraire(vehicule.getId(), instant, attributionsExistantes);
+
+            if (disponibleBD && !conflitSession) {
+                disponibles.add(vehicule);
+            }
+        }
+
+        return disponibles;
     }
 
     // ============================================================================
@@ -478,8 +524,6 @@ public class PlanningService {
                 attributionsFenetre.add(meilleureAttribution);
                 attributionsExistantes.add(meilleureAttribution);
 
-                //  sprint 7: Sauvegarder l'attribution immédiatement dans la base de données
-                attributionRepository.saveAll(meilleureAttribution);
 
                 // FIX 5 : Si la réservation principale n'est QUE partiellement assignée
                 // par ce véhicule (nb_passagers > nb_places), créer une partielle.
@@ -501,10 +545,6 @@ public class PlanningService {
                 if (!attributionsParDivision.isEmpty()) {
                     attributionsFenetre.addAll(attributionsParDivision);
 
-                    //  sprint 7: Sauvegarder les attributions de division immédiatement dans la base de données
-                    for (Attribution attr : attributionsParDivision) {
-                        attributionRepository.saveAll(attr);
-                    }
 
                     int totalAssignePrincipal = passagersDejaAssignes.getOrDefault(reservation.getId(), 0);
                     int passagersRestantsPrincipal = reservation.getPassengerNbr() - totalAssignePrincipal;
@@ -699,18 +739,25 @@ public class PlanningService {
                     LocalDateTime heureDepartVehicule = fenetreStart;
 
                     if (placesRestantes > 0) {
-                        // Fenêtre d'attente dynamique: remplir avec d'autres réservations
-                        for (Reservation autre : reservationsATraiter) {
-                            if (placesRestantes <= 0) break;
-                            if (autre.getId().equals(reservation.getId())) continue;
-                            if (assignedIds.contains(autre.getId())) continue;
+                        // Fenêtre d'attente dynamique: closest fit à chaque itération
+                        while (placesRestantes > 0) {
+                            Reservation autre = trouverMeilleureReservationPourFenetreSprint8(
+                                    placesRestantes,
+                                    reservationsATraiter,
+                                    assignedIds,
+                                    passagersDejaAssignes,
+                                    reservation.getLieuDepart(),
+                                    fenetreEnd,
+                                    reservation.getId());
+
+                            if (autre == null) break;
 
                             int autrePassagersRestants = autre.getPassengerNbr()
                                     - passagersDejaAssignes.getOrDefault(autre.getId(), 0);
-                            if (autrePassagersRestants <= 0) continue;
-
-                            // Vérifier compatibilité (même lieu de départ)
-                            if (!estCompatiblePourRegroupement(reservation, autre)) continue;
+                            if (autrePassagersRestants <= 0) {
+                                assignedIds.add(autre.getId());
+                                continue;
+                            }
 
                             int passagersAPrendre = Math.min(autrePassagersRestants, placesRestantes);
                             attribution.addReservation(autre);
@@ -724,7 +771,6 @@ public class PlanningService {
                                 assignedIds.add(autre.getId());
                             }
 
-                            // Mettre à jour l'heure de départ si cette réservation arrive plus tard
                             if (autre.getArrivalDate() != null && autre.getArrivalDate().isAfter(heureDepartVehicule)) {
                                 heureDepartVehicule = autre.getArrivalDate();
                             }
@@ -742,7 +788,6 @@ public class PlanningService {
 
                     attributionsFenetre.add(attribution);
                     attributionsExistantes.add(attribution);
-                    attributionRepository.saveAll(attribution);
 
                     // Mettre à jour les trajets du véhicule
                     trajetsSessionParVehicule.put(vehiculePlusPetit.getId(),
@@ -783,18 +828,25 @@ public class PlanningService {
                 }
 
                 if (placesRestantes > 0) {
-                    // Fenêtre d'attente dynamique: remplir avec d'autres réservations
-                    for (Reservation autre : reservationsATraiter) {
-                        if (placesRestantes <= 0) break;
-                        if (autre.getId().equals(reservation.getId())) continue;
-                        if (assignedIds.contains(autre.getId())) continue;
+                    // Fenêtre d'attente dynamique: closest fit à chaque itération
+                    while (placesRestantes > 0) {
+                        Reservation autre = trouverMeilleureReservationPourFenetreSprint8(
+                                placesRestantes,
+                                reservationsATraiter,
+                                assignedIds,
+                                passagersDejaAssignes,
+                                reservation.getLieuDepart(),
+                                fenetreEnd,
+                                reservation.getId());
+
+                        if (autre == null) break;
 
                         int autrePassagersRestants = autre.getPassengerNbr()
                                 - passagersDejaAssignes.getOrDefault(autre.getId(), 0);
-                        if (autrePassagersRestants <= 0) continue;
-
-                        // Vérifier compatibilité (même lieu de départ)
-                        if (!estCompatiblePourRegroupement(reservation, autre)) continue;
+                        if (autrePassagersRestants <= 0) {
+                            assignedIds.add(autre.getId());
+                            continue;
+                        }
 
                         int passagersAPrendre = Math.min(autrePassagersRestants, placesRestantes);
                         attribution.addReservation(autre);
@@ -808,7 +860,6 @@ public class PlanningService {
                             assignedIds.add(autre.getId());
                         }
 
-                        // Mettre à jour l'heure de départ si cette réservation arrive plus tard
                         if (autre.getArrivalDate() != null && autre.getArrivalDate().isAfter(heureDepartVehicule)) {
                             heureDepartVehicule = autre.getArrivalDate();
                         }
@@ -826,7 +877,6 @@ public class PlanningService {
 
                 attributionsFenetre.add(attribution);
                 attributionsExistantes.add(attribution);
-                attributionRepository.saveAll(attribution);
 
                 trajetsSessionParVehicule.put(vehiculeOptimal.getId(),
                         trajetsSessionParVehicule.getOrDefault(vehiculeOptimal.getId(), 0) + 1);
@@ -866,6 +916,46 @@ public class PlanningService {
     private boolean estCompatiblePourRegroupement(Reservation r1, Reservation r2) {
         if (r1.getLieuDepart() == null || r2.getLieuDepart() == null) return false;
         return r1.getLieuDepart().getId().equals(r2.getLieuDepart().getId());
+    }
+
+    /**
+     * SPRINT 8: choisir la réservation non assignée la plus proche des places restantes.
+     * Tie-break: plus grand nombre de passagers restants.
+     */
+    private Reservation trouverMeilleureReservationPourFenetreSprint8(
+            int placesRestantes,
+            List<Reservation> reservationsATraiter,
+            Set<Long> assignedIds,
+            Map<Long, Integer> passagersDejaAssignes,
+            Lieu lieuDepart,
+            LocalDateTime limiteArriveeIncluse,
+            Long reservationAExclure) {
+
+        Reservation meilleure = null;
+        int ecartMin = Integer.MAX_VALUE;
+        int passagersRestantsMeilleure = -1;
+
+        for (Reservation r : reservationsATraiter) {
+            if (r == null || r.getId() == null) continue;
+            if (reservationAExclure != null && r.getId().equals(reservationAExclure)) continue;
+            if (assignedIds.contains(r.getId())) continue;
+            if (r.getArrivalDate() == null) continue;
+            if (limiteArriveeIncluse != null && r.getArrivalDate().isAfter(limiteArriveeIncluse)) continue;
+            if (r.getLieuDepart() == null || lieuDepart == null) continue;
+            if (!r.getLieuDepart().getId().equals(lieuDepart.getId())) continue;
+
+            int restants = r.getPassengerNbr() - passagersDejaAssignes.getOrDefault(r.getId(), 0);
+            if (restants <= 0) continue;
+
+            int ecart = Math.abs(restants - placesRestantes);
+            if (ecart < ecartMin || (ecart == ecartMin && restants > passagersRestantsMeilleure)) {
+                ecartMin = ecart;
+                passagersRestantsMeilleure = restants;
+                meilleure = r;
+            }
+        }
+
+        return meilleure;
     }
 
     // ============================================================================
