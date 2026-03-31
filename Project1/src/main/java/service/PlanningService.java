@@ -124,13 +124,17 @@ public class PlanningService {
 
                 if (avantProchainRetour) {
                     List<Vehicule> vehiculesDispo = getVehiculesDisponiblesAInstant(debutResa, toutesAttributions);
-                    if (!vehiculesDispo.isEmpty()) {
-                        FenetreSprint8 fenetreArrivee = new FenetreSprint8(
-                                debutResa,
-                                debutResa.plusMinutes((long) tempsAttente));
-                        for (Vehicule v : vehiculesDispo) {
-                            fenetreArrivee.addVehicule(v);
-                        }
+                    FenetreSprint8 fenetreArrivee = new FenetreSprint8(
+                            debutResa,
+                            debutResa.plusMinutes((long) tempsAttente),
+                            TypeFenetreSprint8.ARRIVEE_NON_ASSIGNEE);
+                    for (Vehicule v : vehiculesDispo) {
+                        fenetreArrivee.addVehicule(v, debutResa);
+                    }
+                    ajouterVehiculesRetournantDansIntervalle(
+                            fenetreArrivee, debutResa, fenetreArrivee.getEndTime(), toutesAttributions);
+
+                    if (!fenetreArrivee.getVehiculesDisponibles().isEmpty()) {
                         fenetreATraiter = fenetreArrivee;
                         fenetreKey = buildFenetreKey(fenetreArrivee) + "_arrival";
                     }
@@ -254,21 +258,48 @@ public class PlanningService {
         public LocalDateTime getAvailableAt() { return availableAt; }
     }
 
+    private enum TypeFenetreSprint8 {
+        RETOUR_VEHICULE,
+        ARRIVEE_NON_ASSIGNEE
+    }
+
     /**
      * SPRINT 8: Classe interne pour une fenêtre avec véhicules disponibles.
      */
     private static class FenetreSprint8 {
         private final FenetreRegroupement fenetre;
+        private final TypeFenetreSprint8 typeFenetre;
         private final List<Vehicule> vehiculesDisponibles;
+        private final Map<Long, LocalDateTime> disponibiliteParVehicule;
 
-        public FenetreSprint8(LocalDateTime startTime, LocalDateTime endTime) {
+        public FenetreSprint8(LocalDateTime startTime, LocalDateTime endTime, TypeFenetreSprint8 typeFenetre) {
             this.fenetre = new FenetreRegroupement(startTime, endTime);
+            this.typeFenetre = typeFenetre;
             this.vehiculesDisponibles = new ArrayList<>();
+            this.disponibiliteParVehicule = new HashMap<>();
         }
 
         public FenetreRegroupement getFenetre() { return fenetre; }
+        public TypeFenetreSprint8 getTypeFenetre() { return typeFenetre; }
         public List<Vehicule> getVehiculesDisponibles() { return vehiculesDisponibles; }
-        public void addVehicule(Vehicule v) { vehiculesDisponibles.add(v); }
+        public void addVehicule(Vehicule v, LocalDateTime availableAt) {
+            if (v == null || v.getId() == null) return;
+            if (availableAt == null) availableAt = fenetre.getStartTime();
+            LocalDateTime old = disponibiliteParVehicule.get(v.getId());
+            if (old == null || availableAt.isBefore(old)) {
+                disponibiliteParVehicule.put(v.getId(), availableAt);
+            }
+            boolean dejaPresent = vehiculesDisponibles.stream()
+                    .anyMatch(existing -> existing != null
+                            && existing.getId() != null
+                            && existing.getId().equals(v.getId()));
+            if (!dejaPresent) {
+                vehiculesDisponibles.add(v);
+            }
+        }
+        public LocalDateTime getDisponibiliteVehicule(Long vehiculeId) {
+            return disponibiliteParVehicule.getOrDefault(vehiculeId, fenetre.getStartTime());
+        }
         public LocalDateTime getStartTime() { return fenetre.getStartTime(); }
         public LocalDateTime getEndTime() { return fenetre.getEndTime(); }
     }
@@ -363,12 +394,15 @@ public class PlanningService {
             // - Pas de fenêtre courante, OU
             // - L'événement est après la fin de la fenêtre courante
             if (currentFenetre == null || eventTime.isAfter(currentFenetre.getEndTime())) {
-                currentFenetre = new FenetreSprint8(eventTime, eventTime.plusMinutes((long) tempsAttenteMinutes));
+                currentFenetre = new FenetreSprint8(
+                        eventTime,
+                        eventTime.plusMinutes((long) tempsAttenteMinutes),
+                        TypeFenetreSprint8.RETOUR_VEHICULE);
                 fenetres.add(currentFenetre);
             }
 
             // Ajouter le véhicule à la fenêtre courante
-            currentFenetre.addVehicule(event.getVehicule());
+            currentFenetre.addVehicule(event.getVehicule(), eventTime);
         }
 
         return fenetres;
@@ -407,7 +441,7 @@ public class PlanningService {
                 .map(v -> String.valueOf(v.getId()))
                 .sorted()
                 .collect(Collectors.joining(","));
-        return fenetre.getStartTime() + "|" + fenetre.getEndTime() + "|" + vehicules;
+        return fenetre.getTypeFenetre() + "|" + fenetre.getStartTime() + "|" + fenetre.getEndTime() + "|" + vehicules;
     }
 
     /**
@@ -434,6 +468,37 @@ public class PlanningService {
         }
 
         return disponibles;
+    }
+
+    /**
+     * SPRINT 8 - Point 5: pour une fenêtre issue d'une non assignée, inclure aussi
+     * les véhicules qui reviennent pendant l'intervalle de cette fenêtre.
+     */
+    private void ajouterVehiculesRetournantDansIntervalle(
+            FenetreSprint8 fenetre,
+            LocalDateTime startInclusive,
+            LocalDateTime endInclusive,
+            List<Attribution> attributionsExistantes) throws SQLException {
+
+        if (fenetre == null || startInclusive == null || endInclusive == null) return;
+        if (endInclusive.isBefore(startInclusive)) return;
+
+        List<AttributionRepository.VehiculeRetourEvent> retoursDB =
+                attributionRepository.getEvenementsRetourVehicules(startInclusive, endInclusive);
+        for (AttributionRepository.VehiculeRetourEvent event : retoursDB) {
+            Vehicule vehicule = vehiculeRepository.findById(event.getVehiculeId());
+            if (vehicule == null) continue;
+            if (!vehicule.estDisponibleAHeure(event.getHeureRetour().toLocalTime())) continue;
+            fenetre.addVehicule(vehicule, event.getHeureRetour());
+        }
+
+        for (Attribution attr : attributionsExistantes) {
+            if (attr.getVehicule() == null || attr.getDateHeureRetour() == null) continue;
+            LocalDateTime retour = attr.getDateHeureRetour();
+            if (retour.isBefore(startInclusive) || retour.isAfter(endInclusive)) continue;
+            if (!attr.getVehicule().estDisponibleAHeure(retour.toLocalTime())) continue;
+            fenetre.addVehicule(attr.getVehicule(), retour);
+        }
     }
 
     // ============================================================================
@@ -651,6 +716,7 @@ public class PlanningService {
 
         LocalDateTime fenetreStart = fenetreSprint8.getStartTime();
         LocalDateTime fenetreEnd = fenetreSprint8.getEndTime();
+        boolean fenetreIssueArrivee = fenetreSprint8.getTypeFenetre() == TypeFenetreSprint8.ARRIVEE_NON_ASSIGNEE;
 
         // Copie modifiable des véhicules disponibles
         List<Vehicule> vehiculesDisponibles = new ArrayList<>(fenetreSprint8.getVehiculesDisponibles());
@@ -724,10 +790,12 @@ public class PlanningService {
                 if (vehiculePlusPetit != null) {
                     // Division: assigner partiellement
                     int passagersAssignes = Math.min(passagersAAssigner, vehiculePlusPetit.getNbPlace());
+                    LocalDateTime heureDisponibiliteVehicule =
+                            getHeureDisponibiliteVehicule(fenetreSprint8, vehiculePlusPetit, fenetreStart);
 
                     Attribution attribution = creerAttributionSprint8(
                             reservation, vehiculePlusPetit, passagersAssignes,
-                            fenetreStart, vitesseMoyenne, distanceAller);
+                            heureDisponibiliteVehicule, vitesseMoyenne, distanceAller);
 
                     // Mettre à jour le tracking
                     int totalAssigne = passagersDejaAssignes.getOrDefault(reservation.getId(), 0) + passagersAssignes;
@@ -736,7 +804,10 @@ public class PlanningService {
 
                     // Remplir le véhicule avec des réservations compatibles si places restantes
                     int placesRestantes = vehiculePlusPetit.getNbPlace() - passagersAssignes;
-                    LocalDateTime heureDepartVehicule = fenetreStart;
+                    LocalDateTime heureDepartVehicule = heureDisponibiliteVehicule;
+                    if (reservation.getArrivalDate() != null && reservation.getArrivalDate().isAfter(heureDepartVehicule)) {
+                        heureDepartVehicule = reservation.getArrivalDate();
+                    }
 
                     if (placesRestantes > 0) {
                         // Fenêtre d'attente dynamique: closest fit à chaque itération
@@ -810,10 +881,12 @@ public class PlanningService {
             } else {
                 // Véhicule peut contenir tous les passagers
                 int passagersAssignes = passagersAAssigner;
+                LocalDateTime heureDisponibiliteVehicule =
+                        getHeureDisponibiliteVehicule(fenetreSprint8, vehiculeOptimal, fenetreStart);
 
                 Attribution attribution = creerAttributionSprint8(
                         reservation, vehiculeOptimal, passagersAssignes,
-                        fenetreStart, vitesseMoyenne, distanceAller);
+                        heureDisponibiliteVehicule, vitesseMoyenne, distanceAller);
 
                 int totalAssigne = passagersDejaAssignes.getOrDefault(reservation.getId(), 0) + passagersAssignes;
                 passagersDejaAssignes.put(reservation.getId(), totalAssigne);
@@ -821,7 +894,7 @@ public class PlanningService {
 
                 // Remplir le véhicule avec d'autres réservations si places restantes
                 int placesRestantes = vehiculeOptimal.getNbPlace() - passagersAssignes;
-                LocalDateTime heureDepartVehicule = fenetreStart;
+                LocalDateTime heureDepartVehicule = heureDisponibiliteVehicule;
 
                 if (reservation.getArrivalDate() != null && reservation.getArrivalDate().isAfter(heureDepartVehicule)) {
                     heureDepartVehicule = reservation.getArrivalDate();
@@ -886,7 +959,58 @@ public class PlanningService {
             }
         }
 
+        if (fenetreIssueArrivee) {
+            appliquerDepartCommunPourFenetreArrivee(fenetreSprint8, attributionsFenetre, vitesseMoyenne);
+        }
+
         return new PlanningResult(attributionsFenetre, nonAssigneesFenetre, reservationsPartielles, assignedIds);
+    }
+
+    private LocalDateTime getHeureDisponibiliteVehicule(
+            FenetreSprint8 fenetreSprint8,
+            Vehicule vehicule,
+            LocalDateTime heureParDefaut) {
+        if (vehicule == null || vehicule.getId() == null) return heureParDefaut;
+        LocalDateTime dispo = fenetreSprint8.getDisponibiliteVehicule(vehicule.getId());
+        if (dispo == null) return heureParDefaut;
+        if (heureParDefaut != null && dispo.isBefore(heureParDefaut)) {
+            return heureParDefaut;
+        }
+        return dispo;
+    }
+
+    /**
+     * SPRINT 8 - Fenêtre issue d'une non assignée:
+     * tous les véhicules assignés sur cette fenêtre partent à la même date/heure.
+     */
+    private void appliquerDepartCommunPourFenetreArrivee(
+            FenetreSprint8 fenetreSprint8,
+            List<Attribution> attributionsFenetre,
+            double vitesseMoyenne) throws SQLException {
+
+        if (attributionsFenetre == null || attributionsFenetre.isEmpty()) return;
+
+        LocalDateTime departCommun = fenetreSprint8.getStartTime();
+        for (Attribution attr : attributionsFenetre) {
+            if (attr.getDateHeureDepart() != null && attr.getDateHeureDepart().isAfter(departCommun)) {
+                departCommun = attr.getDateHeureDepart();
+            }
+        }
+
+        for (Attribution attr : attributionsFenetre) {
+            attr.setDateHeureDepart(departCommun);
+            if (attr.getReservations() == null || attr.getReservations().isEmpty()) {
+                attr.setDateHeureRetour(departCommun.plusMinutes(120));
+                continue;
+            }
+            List<TrajetCar> trajets = attr.getDetailTraject();
+            if (trajets == null || trajets.isEmpty()) {
+                trajets = getDureTotalTrajet(attr.getReservations(), vitesseMoyenne);
+                attr.setDetailTraject(trajets);
+            }
+            double dureeTotale = getTotalDuree(trajets);
+            attr.setDateHeureRetour(departCommun.plusMinutes((long) (dureeTotale * 60)));
+        }
     }
 
     /**
