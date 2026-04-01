@@ -1,7 +1,7 @@
 -- ================================================================================
 --  SPRINT 8 - SCRIPT DE SIMULATION COMPLET - TOUS LES CAS POSSIBLES
 -- ================================================================================
--- Usage: psql -U postgres -d postgres -f sprint8.sql
+-- Usage: psql -U postgres -d postgres -f /home/anita/Documents/itu_lesson/S5/FRAME_WORK/Project/AssignationVoitureBack/Project1/sql/sprint8.sql
 -- ================================================================================
 
 SELECT pg_terminate_backend(pid)
