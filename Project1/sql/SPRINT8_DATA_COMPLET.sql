@@ -1,373 +1,370 @@
 -- ================================================================================
--- SPRINT 8 - SCRIPT SQL COMPLET POUR TESTS
+-- SPRINT 8 - SCRIPT DE REINITIALISATION COMPLET AVEC DONNEES DE SIMULATION
 -- ================================================================================
--- Auteur: Assistant IA
+-- Auteur: ETU003240
 -- Date: 2026-04-01
--- Description: Donnees de test completes pour valider toutes les fonctionnalites
---              du Sprint 8 (Regroupement optimal, Division optimale, Disponibilite
---              horaire, Fenetres de retour, Gestion des restes)
+-- Description: Script de reinitialisation complete de la base de donnees
+--              avec toutes les colonnes Sprint 7/8 et donnees de test
+--              pour valider les fonctionnalites Sprint 8:
+--              - Retour vehicules et fenetres d'attente
+--              - Restes/reports de reservations
+--              - Regroupement optimal (closest fit)
+--              - Division optimale
+--              - Disponibilite horaire (heure_disponible_debut)
 -- ================================================================================
--- Usage: psql -U postgres -d hotel_reservation -f SPRINT8_DATA_COMPLET.sql
+-- Usage: psql -U postgres -d postgres -f reinit_sprint8_complet.sql
 -- ================================================================================
 
--- ==========================================
--- 0. CONNEXION A LA BASE
--- ==========================================
--- Si vous executez depuis psql avec l'option -d postgres:
--- \c hotel_reservation
+-- Fermer toutes les connexions actives a la base
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = 'hotel_reservation' AND pid <> pg_backend_pid();
+
+DROP DATABASE IF EXISTS hotel_reservation;
+CREATE DATABASE hotel_reservation;
+
+-- Se connecter a la nouvelle base
+\c hotel_reservation
 
 -- ==========================================
--- 1. NETTOYAGE DES DONNEES EXISTANTES
+-- 1. NETTOYAGE (securite supplementaire)
 -- ==========================================
 
--- Supprimer les attributions existantes
-DELETE FROM attribution;
+DROP TABLE IF EXISTS attribution CASCADE;
+DROP TABLE IF EXISTS distance CASCADE;
+DROP TABLE IF EXISTS reservation CASCADE;
+DROP TABLE IF EXISTS vehicule CASCADE;
+DROP TABLE IF EXISTS lieu CASCADE;
+DROP TABLE IF EXISTS hotel CASCADE;
+DROP TABLE IF EXISTS parameters CASCADE;
+DROP TABLE IF EXISTS token CASCADE;
 
--- Supprimer les reservations existantes
-DELETE FROM reservation;
-
--- Supprimer les distances existantes
-DELETE FROM distance;
-
--- Supprimer les vehicules existants
-DELETE FROM vehicule;
-
--- Supprimer les lieux existants
-DELETE FROM lieu;
-
--- Reset des sequences
-ALTER SEQUENCE IF EXISTS lieu_id_seq RESTART WITH 1;
-ALTER SEQUENCE IF EXISTS vehicule_id_seq RESTART WITH 1;
-ALTER SEQUENCE IF EXISTS reservation_id_seq RESTART WITH 1;
-ALTER SEQUENCE IF EXISTS attribution_id_seq RESTART WITH 1;
-ALTER SEQUENCE IF EXISTS distance_id_seq RESTART WITH 1;
+DROP TYPE IF EXISTS type_carburant_enum CASCADE;
 
 -- ==========================================
--- 2. INSERTION DES PARAMETRES
+-- 2. CREATION DU TYPE ENUM
 -- ==========================================
 
--- Supprimer les anciens parametres
-DELETE FROM parameters WHERE key IN ('vitesse_moyenne', 'temps_attente');
+CREATE TYPE type_carburant_enum AS ENUM ('D', 'Es', 'H', 'El');
+-- D  = Diesel
+-- Es = Essence
+-- H  = Hybride
+-- El = Electrique
 
--- Inserer les parametres de test
+-- ==========================================
+-- 3. CREATION DES TABLES
+-- ==========================================
+
+-- Table TOKEN (authentification)
+CREATE TABLE token (
+    id SERIAL PRIMARY KEY,
+    token_name TEXT NOT NULL UNIQUE,
+    expire_date TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    revoked BOOLEAN DEFAULT false
+);
+
+-- Table LIEU
+CREATE TABLE lieu (
+    id BIGSERIAL PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    libelle VARCHAR(255) NOT NULL,
+    initial VARCHAR(10),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table VEHICULE (Sprint 8 : avec heure_disponible_debut)
+CREATE TABLE vehicule (
+    id BIGSERIAL PRIMARY KEY,
+    reference VARCHAR(100) NOT NULL,
+    nb_place INT NOT NULL,
+    type_carburant type_carburant_enum NOT NULL,
+    -- Sprint 8 : Heure de disponibilite quotidienne
+    heure_disponible_debut TIME DEFAULT NULL
+);
+
+COMMENT ON COLUMN vehicule.heure_disponible_debut IS
+    'Sprint 8 : Heure quotidienne a partir de laquelle le vehicule est disponible';
+
+-- Table RESERVATION
+CREATE TABLE reservation (
+    id BIGSERIAL PRIMARY KEY,
+    lieu_depart_id BIGINT NOT NULL REFERENCES lieu(id) ON DELETE CASCADE,
+    customer_id VARCHAR(100) NOT NULL,
+    passenger_nbr INT NOT NULL,
+    arrival_date TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    lieu_destination_id BIGINT REFERENCES lieu(id) ON DELETE SET NULL
+);
+
+-- Table PARAMETERS
+CREATE TABLE parameters (
+    id SERIAL PRIMARY KEY,
+    key TEXT NOT NULL UNIQUE,
+    value TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Table DISTANCE
+CREATE TABLE distance (
+    id BIGSERIAL PRIMARY KEY,
+    from_lieu_id BIGINT NOT NULL REFERENCES lieu(id) ON DELETE CASCADE,
+    to_lieu_id BIGINT NOT NULL REFERENCES lieu(id) ON DELETE CASCADE,
+    km_distance NUMERIC(10, 2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_distance_pair UNIQUE (from_lieu_id, to_lieu_id)
+);
+
+-- Table ATTRIBUTION (Sprint 7/8 : nb_passagers_assignes)
+CREATE TABLE attribution (
+    id SERIAL PRIMARY KEY,
+    reservation_id INTEGER NOT NULL REFERENCES reservation(id) ON DELETE CASCADE,
+    vehicule_id INTEGER NOT NULL REFERENCES vehicule(id) ON DELETE CASCADE,
+    date_heure_depart TIMESTAMP NOT NULL,
+    date_heure_retour TIMESTAMP NOT NULL,
+    statut VARCHAR(20) NOT NULL DEFAULT 'ASSIGNE',
+    -- Sprint 7/8 : Colonne pour la division des passagers
+    nb_passagers_assignes INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON COLUMN attribution.nb_passagers_assignes IS
+    'Sprint 7/8 : Nombre de passagers transportes dans CE vehicule (pour supporter la division)';
+
+-- ==========================================
+-- 4. CREATION DES INDEX
+-- ==========================================
+
+CREATE INDEX idx_attribution_reservation ON attribution(reservation_id);
+CREATE INDEX idx_attribution_vehicule ON attribution(vehicule_id);
+CREATE INDEX idx_attribution_date_depart ON attribution(date_heure_depart);
+CREATE INDEX idx_attribution_date_retour ON attribution(date_heure_retour);
+CREATE INDEX idx_reservation_lieu_destination ON reservation(lieu_destination_id);
+CREATE INDEX idx_reservation_lieu_depart ON reservation(lieu_depart_id);
+CREATE INDEX idx_reservation_arrival_date ON reservation(arrival_date);
+CREATE INDEX idx_lieu_code ON lieu(code);
+CREATE INDEX idx_distance_from_to ON distance(from_lieu_id, to_lieu_id);
+
+-- ==========================================
+-- 5. INSERTION DES PARAMETRES
+-- ==========================================
+
 INSERT INTO parameters (key, value) VALUES
 ('vitesse_moyenne', '50'),    -- 50 km/h
-('temps_attente', '30')       -- 30 minutes fenetre d'attente
-ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+('temps_attente', '30');      -- 30 minutes fenetre d'attente
 
 -- ==========================================
--- 3. INSERTION DES LIEUX
+-- 6. INSERTION DES LIEUX
 -- ==========================================
 
-INSERT INTO lieu (id, code, libelle, initial) VALUES
-(1, 'IVATO', 'Aeroport Ivato', 'A'),
-(2, 'CARLTON', 'Hotel Carlton', 'B'),
-(3, 'COLBERT', 'Hotel Colbert', 'C');
-
--- Mise a jour de la sequence
-SELECT setval('lieu_id_seq', (SELECT MAX(id) FROM lieu));
+INSERT INTO lieu (code, libelle, initial) VALUES
+('IVATO', 'Aeroport Ivato', 'A'),       -- id = 1
+('CARLTON', 'Hotel Carlton', 'B'),      -- id = 2
+('COLBERT', 'Hotel Colbert', 'C');      -- id = 3
 
 -- ==========================================
--- 4. INSERTION DES DISTANCES
+-- 7. INSERTION DES DISTANCES
 -- ==========================================
 -- Distances bidirectionnelles pour les calculs de trajet aller-retour
 
 INSERT INTO distance (from_lieu_id, to_lieu_id, km_distance) VALUES
--- Depuis IVATO
+-- Depuis IVATO (id=1)
 (1, 2, 25.00),   -- IVATO -> CARLTON
 (1, 3, 30.00),   -- IVATO -> COLBERT
 
--- Depuis CARLTON
+-- Depuis CARLTON (id=2)
 (2, 1, 25.00),   -- CARLTON -> IVATO
 (2, 3, 10.00),   -- CARLTON -> COLBERT
 
--- Depuis COLBERT
+-- Depuis COLBERT (id=3)
 (3, 1, 30.00),   -- COLBERT -> IVATO
 (3, 2, 10.00);   -- COLBERT -> CARLTON
 
 -- ==========================================
--- 5. INSERTION DES VEHICULES
+-- 8. INSERTION DES VEHICULES (Sprint 8)
 -- ==========================================
--- Vehicules avec differentes capacites et heures de disponibilite
+-- Vehicules selon la specification Sprint 8:
+-- v1: 10 places, Diesel, revient a 09:45
+-- v2: 10 places, Essence, revient a 09:45
+-- v3: 12 places, Diesel, revient a 10:12
+-- v4: 8 places, Hybride, disponible a partir de 10:30 (test heure_disponible_debut)
 
-INSERT INTO vehicule (id, reference, nb_place, type_carburant, heure_disponible_debut) VALUES
--- Grands vehicules
-(1, 'VEH-12A', 12, 'D',  NULL),        -- Diesel, toujours disponible
-(2, 'VEH-10B', 10, 'Es', '08:00:00'),  -- Essence, disponible des 08:00
+INSERT INTO vehicule (reference, nb_place, type_carburant, heure_disponible_debut) VALUES
+('v1', 10, 'D',  NULL),        -- Diesel, toujours disponible
+('v2', 10, 'Es', NULL),        -- Essence, toujours disponible
+('v3', 12, 'D',  NULL),        -- Diesel, toujours disponible
+('v4', 8,  'H',  '10:30:00');  -- Hybride, disponible a partir de 10:30
 
--- Vehicules moyens
-(3, 'VEH-08C', 8,  'D',  '09:00:00'),  -- Diesel, disponible des 09:00
-(4, 'VEH-05D', 5,  'H',  NULL),        -- Hybride, toujours disponible
-(5, 'VEH-05E', 5,  'El', '10:00:00'),  -- Electrique, disponible des 10:00
+-- ==========================================
+-- 9. RESERVATIONS FICTIVES POUR TRAJETS PRECEDENTS
+-- ==========================================
+-- Ces reservations servent a creer les attributions pre-existantes
+-- (vehicules "en course" qui vont revenir)
 
--- Petit vehicule
-(6, 'VEH-03F', 3,  'Es', NULL);        -- Essence, toujours disponible
+INSERT INTO reservation (id, lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
+(100, 2, 'TRAJET_INIT_V1', 10, '2026-03-27 07:00:00', 1),
+(101, 2, 'TRAJET_INIT_V2', 10, '2026-03-27 07:00:00', 1),
+(102, 3, 'TRAJET_INIT_V3', 12, '2026-03-27 07:30:00', 1);
+
+-- ==========================================
+-- 10. ATTRIBUTIONS PRE-EXISTANTES (vehicules en course)
+-- ==========================================
+-- Simule les vehicules qui sont partis et vont revenir:
+-- v1 et v2 reviennent a 09:45
+-- v3 revient a 10:12
+
+INSERT INTO attribution (id, reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut, nb_passagers_assignes) VALUES
+-- v1 revient a 09:45
+(100, 100, 1, '2026-03-27 08:45:00', '2026-03-27 09:45:00', 'TERMINE', 10),
+-- v2 revient a 09:45
+(101, 101, 2, '2026-03-27 08:45:00', '2026-03-27 09:45:00', 'TERMINE', 10),
+-- v3 revient a 10:12
+(102, 102, 3, '2026-03-27 09:00:00', '2026-03-27 10:12:00', 'TERMINE', 12);
+
+-- Mise a jour des sequences
+SELECT setval('attribution_id_seq', 102);
+
+-- ==========================================
+-- 11. RESERVATIONS - RESTES NON ASSIGNES (PRIORITAIRES)
+-- ==========================================
+-- r1 et r2 sont des "restes" de reservations precedentes
+-- Ils sont arrives AVANT le retour des vehicules (09:45)
+-- Ils doivent etre traites EN PRIORITE
+
+INSERT INTO reservation (id, lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
+-- r1: 9 passagers, arrive a 08:00 (reste non assigne - PRIORITAIRE)
+(1, 2, 'r1_RESTE_9pass', 9, '2026-03-27 08:00:00', 1),
+-- r2: 5 passagers, arrive a 07:30 (reste non assigne - PRIORITAIRE)
+(2, 2, 'r2_RESTE_5pass', 5, '2026-03-27 07:30:00', 1);
+
+-- ==========================================
+-- 12. RESERVATIONS - NOUVELLES ARRIVEES
+-- ==========================================
+-- Ces reservations arrivent pendant ou apres la fenetre d'attente
+
+INSERT INTO reservation (id, lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
+-- r3: 1 passager, arrive a 10:00 (dans fenetre [09:45-10:15])
+(3, 2, 'r3_1pass', 1, '2026-03-27 10:00:00', 1),
+-- r4: 7 passagers, arrive a 10:10 (dans fenetre [09:45-10:15])
+(4, 2, 'r4_7pass', 7, '2026-03-27 10:10:00', 1),
+-- r5: 5 passagers, arrive a 10:11 (juste apres r4)
+(5, 3, 'r5_5pass', 5, '2026-03-27 10:11:00', 1);
 
 -- Mise a jour de la sequence
-SELECT setval('vehicule_id_seq', (SELECT MAX(id) FROM vehicule));
+SELECT setval('reservation_id_seq', 102);
 
 -- ==========================================
--- 6. RESERVATIONS - SCENARIO 1: REGROUPEMENT OPTIMAL
--- ==========================================
--- Date: 2026-04-01
--- Test: Le systeme doit choisir R3 pour regrouper avec R1 car ecart = 0
-
-INSERT INTO reservation (id, lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
--- R1: 9 passagers -> VEH-12A laisse 3 places
-(1, 2, 'CLI001', 9, '2026-04-01 08:00:00', 1),
--- R2: 5 passagers -> ecart avec 3 places = |5-3| = 2
-(2, 2, 'CLI002', 5, '2026-04-01 08:10:00', 1),
--- R3: 3 passagers -> ecart avec 3 places = |3-3| = 0 (OPTIMAL)
-(3, 2, 'CLI003', 3, '2026-04-01 08:15:00', 1),
--- R4: 2 passagers -> ecart avec 3 places = |2-3| = 1
-(4, 2, 'CLI004', 2, '2026-04-01 08:20:00', 1);
-
--- ==========================================
--- 7. RESERVATIONS - SCENARIO 2: DIVISION OPTIMALE
--- ==========================================
--- Date: 2026-04-02
--- Test: Division de 20 passagers avec selection optimale des vehicules
-
-INSERT INTO reservation (id, lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
--- R5: 20 passagers -> necessite division
--- Attendu: VEH-12A (12 pass, ecart=8) puis VEH-08C (8 pass, ecart=0)
-(5, 3, 'CLI005', 20, '2026-04-02 09:30:00', 1);
-
--- ==========================================
--- 8. RESERVATIONS - SCENARIO 3: DISPONIBILITE HORAIRE
--- ==========================================
--- Date: 2026-04-03
--- Test: Verification que les vehicules respectent leur heure de disponibilite
-
-INSERT INTO reservation (id, lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
--- R6: 07:00 -> VEH-10B (08:00) et VEH-08C (09:00) NON disponibles
-(6, 2, 'CLI006', 4, '2026-04-03 07:00:00', 1),
--- R7: 09:30 -> VEH-08C (09:00) maintenant disponible
-(7, 2, 'CLI007', 4, '2026-04-03 09:30:00', 1);
-
--- ==========================================
--- 9. RESERVATIONS - SCENARIO 4: FENETRE DE RETOUR VEHICULE
--- ==========================================
--- Date: 2026-04-04
--- Test: Enchainement des trajets avec fenetres de retour
-
-INSERT INTO reservation (id, lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
--- R8: 08:00 -> VEH-12A part, retour ~09:00
-(8, 2, 'CLI008', 6, '2026-04-04 08:00:00', 1),
--- R9: 09:30 -> Dans fenetre d'attente apres retour VEH-12A
-(9, 3, 'CLI009', 7, '2026-04-04 09:30:00', 1),
--- R10: 10:10 -> Apres second retour de VEH-12A
-(10, 2, 'CLI010', 5, '2026-04-04 10:10:00', 1);
-
--- ==========================================
--- 10. RESERVATIONS - SCENARIO 5: GESTION DES RESTES
--- ==========================================
--- Date: 2026-04-05
--- Test: 25 passagers avec vehicules limites -> reste non assigne
-
-INSERT INTO reservation (id, lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
--- R11: 25 passagers -> si seulement 15 places dispo, 10 restent
-(11, 2, 'CLI011', 25, '2026-04-05 08:30:00', 1);
-
--- ==========================================
--- 11. RESERVATIONS - SCENARIO 6: CAS COMBINE COMPLEXE
--- ==========================================
--- Date: 2026-04-06
--- Test: Tous les aspects combines
-
-INSERT INTO reservation (id, lieu_depart_id, customer_id, passenger_nbr, arrival_date, lieu_destination_id) VALUES
--- Phase 1: Fenetre initiale 07:00-07:30
-(12, 2, 'CLI012', 10, '2026-04-06 07:00:00', 1),  -- CARLTON
-(13, 2, 'CLI013', 8,  '2026-04-06 07:15:00', 1),  -- CARLTON
-(14, 3, 'CLI014', 3,  '2026-04-06 07:20:00', 1),  -- COLBERT
-
--- Phase 2: Apres retour vehicules
-(15, 2, 'CLI015', 15, '2026-04-06 09:00:00', 1),  -- CARLTON - Division probable
-
--- Phase 3: Fin de matinee
-(16, 3, 'CLI016', 6,  '2026-04-06 10:30:00', 1),  -- COLBERT
-(17, 2, 'CLI017', 4,  '2026-04-06 11:00:00', 1);  -- CARLTON
-
--- Mise a jour de la sequence
-SELECT setval('reservation_id_seq', (SELECT MAX(id) FROM reservation));
-
--- ==========================================
--- 12. CREATION D'ATTRIBUTIONS PRE-EXISTANTES (Optionnel)
--- ==========================================
--- Pour simuler des vehicules deja en course pour le Scenario 5
-
--- Decommenter pour simuler des vehicules indisponibles au 2026-04-05
-/*
-INSERT INTO attribution (reservation_id, vehicule_id, date_heure_depart, date_heure_retour, statut, nb_passagers_assignes) VALUES
--- VEH-10B en course de 07:00 a 10:00 le 2026-04-05
-(11, 2, '2026-04-05 07:00:00', '2026-04-05 10:00:00', 'ASSIGNE', 10),
--- VEH-05D en course de 07:30 a 09:30 le 2026-04-05
-(11, 4, '2026-04-05 07:30:00', '2026-04-05 09:30:00', 'ASSIGNE', 5);
-*/
-
--- ==========================================
--- 13. VERIFICATION DES DONNEES INSEREES
+-- 13. AFFICHAGE DES DONNEES INSEREES
 -- ==========================================
 
--- Afficher le resume des lieux
-SELECT '=== LIEUX ===' as info;
+SELECT '========================================' as info;
+SELECT 'SPRINT 8 - DONNEES DE SIMULATION' as info;
+SELECT '========================================' as info;
+
+SELECT '--- PARAMETRES ---' as section;
+SELECT key, value FROM parameters;
+
+SELECT '--- LIEUX ---' as section;
 SELECT id, code, libelle FROM lieu ORDER BY id;
 
--- Afficher le resume des vehicules
-SELECT '=== VEHICULES ===' as info;
-SELECT id, reference, nb_place, type_carburant, heure_disponible_debut
-FROM vehicule ORDER BY id;
+SELECT '--- VEHICULES ---' as section;
+SELECT id, reference, nb_place, type_carburant, heure_disponible_debut FROM vehicule ORDER BY id;
 
--- Afficher le resume des distances
-SELECT '=== DISTANCES ===' as info;
-SELECT l1.code as de, l2.code as vers, d.km_distance
+SELECT '--- DISTANCES (km) ---' as section;
+SELECT l1.code as de, l2.code as vers, d.km_distance as km
 FROM distance d
 JOIN lieu l1 ON d.from_lieu_id = l1.id
 JOIN lieu l2 ON d.to_lieu_id = l2.id
 ORDER BY l1.code, l2.code;
 
--- Afficher le resume des reservations par jour
-SELECT '=== RESERVATIONS PAR JOUR ===' as info;
+SELECT '--- ATTRIBUTIONS PRE-EXISTANTES (vehicules en retour) ---' as section;
 SELECT
-    DATE(arrival_date) as date_jour,
-    COUNT(*) as nb_reservations,
-    SUM(passenger_nbr) as total_passagers
-FROM reservation
-GROUP BY DATE(arrival_date)
-ORDER BY date_jour;
-
--- Afficher le detail des reservations
-SELECT '=== DETAIL RESERVATIONS ===' as info;
-SELECT
-    r.id,
-    r.customer_id,
-    r.passenger_nbr,
-    l1.code as depart,
-    l2.code as destination,
-    r.arrival_date
-FROM reservation r
-JOIN lieu l1 ON r.lieu_depart_id = l1.id
-JOIN lieu l2 ON r.lieu_destination_id = l2.id
-ORDER BY r.arrival_date;
-
--- Afficher les parametres
-SELECT '=== PARAMETRES ===' as info;
-SELECT key, value FROM parameters WHERE key IN ('vitesse_moyenne', 'temps_attente');
-
--- ==========================================
--- 14. REQUETES DE TEST POST-PLANIFICATION
--- ==========================================
-
--- Ces requetes sont a executer APRES avoir lance la planification
-
-/*
--- A. Vue d'ensemble des attributions
-SELECT
-    DATE(a.date_heure_depart) as date_trajet,
     v.reference as vehicule,
-    v.nb_place as places_vehicule,
-    r.customer_id as client,
-    r.passenger_nbr as passagers_demandes,
-    a.nb_passagers_assignes as passagers_assignes,
-    a.date_heure_depart::time as heure_depart,
+    v.nb_place as places,
+    v.type_carburant as carburant,
     a.date_heure_retour::time as heure_retour
 FROM attribution a
 JOIN vehicule v ON a.vehicule_id = v.id
-JOIN reservation r ON a.reservation_id = r.id
-ORDER BY a.date_heure_depart;
+WHERE a.id >= 100
+ORDER BY a.date_heure_retour;
 
--- B. Verification Scenario 1: Regroupement Optimal (2026-04-01)
--- R3 doit etre groupee avec R1 car ecart = 0
-SELECT
-    a.id as attribution_id,
-    v.reference,
-    STRING_AGG(r.customer_id, ', ') as clients_groupes,
-    SUM(a.nb_passagers_assignes) as total_passagers
-FROM attribution a
-JOIN vehicule v ON a.vehicule_id = v.id
-JOIN reservation r ON a.reservation_id = r.id
-WHERE DATE(a.date_heure_depart) = '2026-04-01'
-GROUP BY a.id, v.reference
-ORDER BY a.id;
-
--- C. Verification Scenario 2: Division Optimale (2026-04-02)
--- R5 (20 pass) doit etre divisee: VEH-12A (12) + VEH-08C (8)
-SELECT
-    v.reference,
-    v.nb_place,
-    a.nb_passagers_assignes,
-    ABS(v.nb_place - a.nb_passagers_assignes) as ecart
-FROM attribution a
-JOIN vehicule v ON a.vehicule_id = v.id
-JOIN reservation r ON a.reservation_id = r.id
-WHERE r.id = 5
-ORDER BY a.date_heure_depart;
-
--- D. Verification Scenario 3: Disponibilite Horaire (2026-04-03)
-SELECT
-    v.reference,
-    v.heure_disponible_debut,
-    a.date_heure_depart::time as heure_depart,
-    CASE
-        WHEN v.heure_disponible_debut IS NULL THEN 'OK - Toujours dispo'
-        WHEN a.date_heure_depart::time >= v.heure_disponible_debut THEN 'OK - Respecte'
-        ELSE 'ERREUR - Avant dispo'
-    END as validation
-FROM attribution a
-JOIN vehicule v ON a.vehicule_id = v.id
-WHERE DATE(a.date_heure_depart) = '2026-04-03';
-
--- E. Verification Scenario 4: Fenetres de Retour (2026-04-04)
-SELECT
-    v.reference,
-    a.date_heure_depart,
-    a.date_heure_retour,
-    LEAD(a.date_heure_depart) OVER (PARTITION BY v.id ORDER BY a.date_heure_depart) as prochain_depart,
-    CASE
-        WHEN LEAD(a.date_heure_depart) OVER (PARTITION BY v.id ORDER BY a.date_heure_depart) >= a.date_heure_retour
-        THEN 'OK' ELSE 'Chevauchement'
-    END as validation
-FROM attribution a
-JOIN vehicule v ON a.vehicule_id = v.id
-WHERE DATE(a.date_heure_depart) = '2026-04-04'
-ORDER BY v.reference, a.date_heure_depart;
-
--- F. Verification Scenario 5: Gestion des Restes (2026-04-05)
+SELECT '--- RESERVATIONS A TRAITER ---' as section;
 SELECT
     r.id,
     r.customer_id,
+    r.passenger_nbr as passagers,
+    r.arrival_date::time as arrivee,
+    l.code as hotel,
+    CASE
+        WHEN r.arrival_date < '2026-03-27 09:45:00' THEN 'RESTE (prioritaire)'
+        WHEN r.arrival_date BETWEEN '2026-03-27 09:45:00' AND '2026-03-27 10:15:00' THEN 'Fenetre [09:45-10:15]'
+        ELSE 'Apres fenetre'
+    END as statut
+FROM reservation r
+JOIN lieu l ON r.lieu_depart_id = l.id
+WHERE r.id < 100
+ORDER BY r.arrival_date;
+
+SELECT '========================================' as info;
+SELECT 'RESULTATS ATTENDUS (27/03/2026)' as info;
+SELECT '========================================' as info;
+
+SELECT 'Etape 1: v1 et v2 reviennent a 09:45' as etape;
+SELECT 'Etape 2: v1 recoit r1(9p) + r2(1p) = 10p -> PART a 09:45' as etape;
+SELECT 'Etape 3: v2 recoit r2(4p reste), fenetre [09:45-10:15] ouverte' as etape;
+SELECT 'Etape 4: r4(7p) arrive, v2 recoit r4(6p) = 10p -> PART a 10:10' as etape;
+SELECT 'Etape 5: v3 revient a 10:12' as etape;
+SELECT 'Etape 6: v3 recoit r5(5p) + r4(1p reste) + r3(1p) = 7p -> PART a 10:11' as etape;
+
+SELECT '========================================' as info;
+SELECT 'Lancer: GET /api/planning/auto?date=2026-03-27' as info;
+SELECT '========================================' as info;
+
+-- ==========================================
+-- 14. REQUETES DE VERIFICATION POST-PLANIFICATION
+-- ==========================================
+
+/*
+-- Executer APRES la planification pour verifier les resultats
+
+-- A. Vue des attributions creees
+SELECT
+    a.id,
+    v.reference,
+    STRING_AGG(r.customer_id, ' + ') as clients,
+    SUM(a.nb_passagers_assignes) as passagers,
+    a.date_heure_depart::time as depart
+FROM attribution a
+JOIN vehicule v ON a.vehicule_id = v.id
+JOIN reservation r ON a.reservation_id = r.id
+WHERE a.id > 102
+GROUP BY a.id, v.reference, a.date_heure_depart
+ORDER BY a.date_heure_depart;
+
+-- B. Verification des divisions
+SELECT
+    r.customer_id,
     r.passenger_nbr as demande,
     COALESCE(SUM(a.nb_passagers_assignes), 0) as assigne,
-    r.passenger_nbr - COALESCE(SUM(a.nb_passagers_assignes), 0) as reste_non_assigne
+    r.passenger_nbr - COALESCE(SUM(a.nb_passagers_assignes), 0) as reste
 FROM reservation r
 LEFT JOIN attribution a ON r.id = a.reservation_id
-WHERE DATE(r.arrival_date) = '2026-04-05'
-GROUP BY r.id, r.customer_id, r.passenger_nbr;
+WHERE r.id < 100
+GROUP BY r.id, r.customer_id, r.passenger_nbr
+ORDER BY r.arrival_date;
 
--- G. Resume global par jour
+-- C. Verification ordre de traitement
 SELECT
-    DATE(r.arrival_date) as date_jour,
-    COUNT(DISTINCT r.id) as nb_reservations,
-    SUM(r.passenger_nbr) as passagers_demandes,
-    COALESCE(SUM(a.nb_passagers_assignes), 0) as passagers_assignes,
-    SUM(r.passenger_nbr) - COALESCE(SUM(a.nb_passagers_assignes), 0) as passagers_restants
-FROM reservation r
-LEFT JOIN attribution a ON r.id = a.reservation_id
-GROUP BY DATE(r.arrival_date)
-ORDER BY date_jour;
+    a.date_heure_depart::time as depart,
+    v.reference,
+    r.customer_id,
+    r.arrival_date::time as arrivee_client,
+    a.nb_passagers_assignes
+FROM attribution a
+JOIN vehicule v ON a.vehicule_id = v.id
+JOIN reservation r ON a.reservation_id = r.id
+WHERE a.id > 102
+ORDER BY a.date_heure_depart, a.id;
 */
-
--- ==========================================
--- FIN DU SCRIPT
--- ==========================================
-
-SELECT '========================================' as info;
-SELECT 'SPRINT 8 - DONNEES DE TEST INSEREES' as info;
-SELECT '========================================' as info;
-SELECT 'Lieux: ' || COUNT(*) FROM lieu;
-SELECT 'Vehicules: ' || COUNT(*) FROM vehicule;
-SELECT 'Distances: ' || COUNT(*) FROM distance;
-SELECT 'Reservations: ' || COUNT(*) FROM reservation;
-SELECT '========================================' as info;
-SELECT 'Pret pour lancer la planification!' as info;
-SELECT '========================================' as info;
