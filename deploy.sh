@@ -6,7 +6,7 @@
 set -e  # Stoppe le script à la moindre erreur
 
 # === Variables communes ===
-TOMCAT_WEBAPPS="/home/etu003240/Documents/apache-tomcat-10.1.52/webapps"
+TOMCAT_WEBAPPS="/home/anita/apache-tomcat-10.1.28/webapps"
 # === Variables Project1 ===
 PROJECT_DIR="Project1"
 APP_NAME="project1"

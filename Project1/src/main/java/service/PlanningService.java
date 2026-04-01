@@ -718,6 +718,18 @@ public class PlanningService {
         LocalDateTime fenetreEnd = fenetreSprint8.getEndTime();
         boolean fenetreIssueArrivee = fenetreSprint8.getTypeFenetre() == TypeFenetreSprint8.ARRIVEE_NON_ASSIGNEE;
 
+        // If the window was created from an ARRIVEE_NON_ASSIGNEE, preserve Sprint-7 behavior
+        if (fenetreIssueArrivee) {
+            return traiterFenetre(
+                fenetreSprint8.getFenetre(),
+                toutesReservationsJour,
+                attributionsExistantes,
+                vitesseMoyenne,
+                tempsAttenteMinutes,
+                trajetsSessionParVehicule,
+                attributionRepository);
+        }
+
         // Copie modifiable des véhicules disponibles
         List<Vehicule> vehiculesDisponibles = new ArrayList<>(fenetreSprint8.getVehiculesDisponibles());
 
@@ -959,9 +971,11 @@ public class PlanningService {
             }
         }
 
-        if (fenetreIssueArrivee) {
-            appliquerDepartCommunPourFenetreArrivee(fenetreSprint8, attributionsFenetre, vitesseMoyenne);
-        }
+        // Pour préserver le comportement Sprint-7, ne pas forcer un départ commun
+        // pour les fenêtres issues d'une réservation non assignée. Les attributions
+        // conservent leur heure de départ calculée localement (retour véhicule pris
+        // en compte dans "trouverMeilleureAttributionAvecRegroupement" et les
+        // chemins de division/regroupement).
 
         return new PlanningResult(attributionsFenetre, nonAssigneesFenetre, reservationsPartielles, assignedIds);
     }
