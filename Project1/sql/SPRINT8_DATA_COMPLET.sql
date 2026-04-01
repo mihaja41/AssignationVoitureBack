@@ -312,11 +312,13 @@ SELECT 'RESULTATS ATTENDUS (27/03/2026)' as info;
 SELECT '========================================' as info;
 
 SELECT 'Etape 1: v1 et v2 reviennent a 09:45' as etape;
-SELECT 'Etape 2: v1 recoit r1(9p) + r2(1p) = 10p -> PART a 09:45' as etape;
-SELECT 'Etape 3: v2 recoit r2(4p reste), fenetre [09:45-10:15] ouverte' as etape;
-SELECT 'Etape 4: r4(7p) arrive, v2 recoit r4(6p) = 10p -> PART a 10:10' as etape;
-SELECT 'Etape 5: v3 revient a 10:12' as etape;
-SELECT 'Etape 6: v3 recoit r5(5p) + r4(1p reste) + r3(1p) = 7p -> PART a 10:11' as etape;
+SELECT 'Etape 2: Restes traites en priorite (r1=9p, r2=5p) tries par passagers DESC' as etape;
+SELECT 'Etape 3: v1 recoit r1(9p) + r2(1p) = 10p -> PART a 09:45' as etape;
+SELECT 'Etape 4: v2 recoit r2(4p reste), fenetre [09:45-10:15] ouverte' as etape;
+SELECT 'Etape 5: Dans fenetre v2, CLOSEST FIT: r4 ecart=|6-7|=1 -> v2 recoit r4(6p) = 10p -> PART a 10:10' as etape;
+SELECT '        (r4 selectionne car ecart minimum, PAS tri decroissant)' as note;
+SELECT 'Etape 6: v3 revient a 10:12, traite restes (r5=5p) puis closest fit (r3, r4 reste)' as etape;
+SELECT 'Etape 7: v3 recoit r5(5p) + r3(1p) + r4_reste(1p) = 7p -> PART a 10:11' as etape;
 
 SELECT '========================================' as info;
 SELECT 'Lancer: GET /api/planning/auto?date=2026-03-27' as info;

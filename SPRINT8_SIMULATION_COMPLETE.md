@@ -90,22 +90,30 @@
 
 #### ETAPE 5: Fenetre d'attente [09:45 - 10:15]
 **Vehicule en attente:** v2 (6 places restantes)
+**Type de fenetre:** Issue d'un vehicule retourne NON PLEIN
 
 **Reservations arrivant dans cette fenetre:**
-| ID | Passagers | Arrivee | Dans fenetre? |
-|----|-----------|---------|---------------|
-| r3 | 1 | 10:00 | OUI |
-| r4 | 7 | 10:10 | OUI |
-| r5 | 5 | 10:11 | OUI |
+| ID | Passagers | Arrivee | Ecart avec 6 places |
+|----|-----------|---------|---------------------|
+| r3 | 1 | 10:00 | \|6-1\| = 5 |
+| r4 | 7 | 10:10 | \|6-7\| = 1 ← MINIMUM |
+| r5 | 5 | 10:11 | \|6-5\| = 1 ← MINIMUM |
 
-**Tri par passagers decroissant:** r4 (7) > r5 (5) > r3 (1)
+**Selection par CLOSEST FIT (ecart minimum):**
+- r4 et r5 ont le meme ecart (1)
+- r4 arrive en premier (10:10 < 10:11)
+- **r4 est selectionnee**
+
+> **IMPORTANT:** Pour une fenetre issue d'un vehicule retourne non plein,
+> on cherche la reservation avec l'ecart MINIMUM (closest fit),
+> PAS un tri decroissant par passagers.
 
 ---
 
-#### ETAPE 6: Tentative d'attribution de r4 (7 passagers) a v2
+#### ETAPE 6: Attribution de r4 (7 passagers) a v2 - Closest Fit
 **Places restantes dans v2:** 6
-
-**Ecart:** |6 - 7| = 1 (r4 depasse de 1)
+**r4 a:** 7 passagers
+**Ecart:** |6 - 7| = 1 (le plus proche)
 
 **Action:** Assigner 6 passagers de r4 a v2
 - v2 est maintenant PLEIN (10/10)
@@ -123,24 +131,33 @@
 - r3: 1 passager (arrivee 10:00)
 - r5: 5 passagers (arrivee 10:11)
 
-**Tri par passagers decroissant:** r5 (5) > r4_reste (1) = r3 (1)
-
 ---
 
-#### ETAPE 8: Attribution a v3
+#### ETAPE 8: Attribution a v3 - Fenetre issue d'arrivee non assignee
 
-**8a. Attribution de r5 (5 passagers)**
+> **Note:** Ici v3 revient et va traiter les reservations non assignees.
+> Comme c'est une nouvelle fenetre issue d'une arrivee de reservation non assignee
+> (restes de r4, r3, r5), on traite d'abord les RESTES puis les nouvelles.
+> Les restes sont tries par passagers DECROISSANT (r5 > r4_reste = r3).
+
+**8a. Attribution de r5 (5 passagers) - Plus grand reste**
 - v3 recoit r5: 5 passagers
 - v3 a maintenant: 12 - 5 = **7 places restantes**
 
-**8b. Attribution du reste de r4 (1 passager)**
-- Ecart avec 7 places: |7 - 1| = 6
-- v3 recoit reste de r4: 1 passager
+**8b. Closest fit pour remplir v3 (7 places restantes)**
+| Reservation | Passagers | Ecart avec 7 places |
+|-------------|-----------|---------------------|
+| r4 reste | 1 | \|7-1\| = 6 |
+| r3 | 1 | \|7-1\| = 6 |
+
+- Ecarts egaux, on prend par ordre d'arrivee
+- r3 est arrivee a 10:00, r4 reste est cree a 10:10
+- **r3 est selectionnee** puis r4 reste
+
+**8c. v3 recoit r3 (1 passager)**
 - v3 a maintenant: 7 - 1 = **6 places restantes**
 
-**8c. Attribution de r3 (1 passager)**
-- Ecart avec 6 places: |6 - 1| = 5
-- v3 recoit r3: 1 passager
+**8d. v3 recoit reste de r4 (1 passager)**
 - v3 a maintenant: 6 - 1 = **5 places restantes**
 
 ---
