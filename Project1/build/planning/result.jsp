@@ -5,6 +5,7 @@
 <%@ page import="model.Reservation" %>
 <%@ page import="model.ReservationPartielle" %>
 <%@ page import="java.time.format.DateTimeFormatter" %>
+<%@ page import="java.time.Duration" %>
 <%@ page import="java.math.BigDecimal" %>
 <%@ page import="java.util.stream.Collectors" %>
 <%@ page import="java.util.HashMap" %>
@@ -294,6 +295,34 @@
         .capacity-text { font-size: 12px; color: var(--ink-light); white-space: nowrap; }
         .time-main { font-weight: 500; font-size: 13.5px; }
         .time-date { font-size: 11.5px; color: var(--ink-faint); }
+        .recap-caption {
+            padding: 8px 10px;
+            font-size: 11px;
+            color: var(--ink-light);
+            border-bottom: 1px solid var(--border-soft);
+            background: #fcfcfb;
+        }
+        .recap-table {
+            border: 1px solid #666;
+            border-collapse: collapse;
+        }
+        .recap-table thead tr {
+            background: #ececec;
+            color: #111;
+        }
+        .recap-table thead th {
+            text-transform: none;
+            letter-spacing: 0;
+            font-size: 11px;
+            padding: 4px 6px;
+            border: 1px solid #666;
+        }
+        .recap-table td {
+            border: 1px solid #666;
+            padding: 4px 6px;
+            font-size: 11px;
+            line-height: 1.25;
+        }
 
         /* badges */
         .badge {
@@ -374,6 +403,7 @@
     List<Reservation> reservationsNonAssignees = (List<Reservation>) request.getAttribute("reservationsNonAssignees");
     List<ReservationPartielle> reservationsPartielles = (List<ReservationPartielle>) request.getAttribute("reservationsPartielles");
     DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    DateTimeFormatter tf = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     // Sprint 7 : Correction du comptage (compter réservations DISTINCT + passagers corrects)
     int nbAssigned = 0;
@@ -479,6 +509,67 @@
             <div class="kpi-label">Passagers reportés</div>
         </div>
     </div>
+
+    <!-- ══ SECTION : TABLEAU RÉCAPITULATIF ══ -->
+    <div class="section-header">
+        <h2 class="section-title">Tableau récapitulatif des résultats</h2>
+    </div>
+    <div class="section-divider"></div>
+
+    <% if (attributions != null && !attributions.isEmpty()) { %>
+        <div class="table-wrap">
+            <div class="recap-caption">
+                Résultat<% if (selectedDate != null) { %> du <strong><%= selectedDate %></strong><% } %>
+            </div>
+            <table class="recap-table">
+                <thead>
+                    <tr>
+                        <th>Véhicule</th>
+                        <th>Client</th>
+                        <th>Nb pers</th>
+                        <th>Heure départ</th>
+                        <th>Heure retour</th>
+                        <th>Min durée</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% for (Attribution attr : attributions) {
+                        List<Reservation> grouped = attr.getReservations();
+                        for (Reservation r : grouped) {
+                            int passagersIci = attr.getPassagersPourReservation(r.getId());
+                            if (passagersIci <= 0) passagersIci = r.getPassengerNbr();
+
+                            String heureDepart = "—";
+                            String heureRetour = "—";
+                            long dureeMin = 0;
+
+                            if (attr.getDateHeureDepart() != null) heureDepart = attr.getDateHeureDepart().format(tf);
+                            if (attr.getDateHeureRetour() != null) heureRetour = attr.getDateHeureRetour().format(tf);
+                            if (attr.getDateHeureDepart() != null && attr.getDateHeureRetour() != null) {
+                                dureeMin = Duration.between(attr.getDateHeureDepart(), attr.getDateHeureRetour()).toMinutes();
+                                if (dureeMin < 0) dureeMin = 0;
+                            }
+                    %>
+                    <tr class="row-main">
+                        <td><%= attr.getVehicule() != null ? attr.getVehicule().getReference() : "—" %></td>
+                        <td><%= r.getCustomerId() %></td>
+                        <td><%= passagersIci %></td>
+                        <td><%= heureDepart %></td>
+                        <td><%= heureRetour %></td>
+                        <td><%= dureeMin %></td>
+                    </tr>
+                    <% } } %>
+                </tbody>
+            </table>
+        </div>
+    <% } else { %>
+        <div class="table-wrap">
+            <div class="empty-state">
+                <div class="empty-state-icon">📋</div>
+                <div class="empty-state-text">Aucun résultat à récapituler pour cette date.</div>
+            </div>
+        </div>
+    <% } %>
 
     <!-- ══ SECTION : ATTRIBUTIONS ══ -->
     <div class="section-header">
